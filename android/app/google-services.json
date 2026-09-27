@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "595594270619",
+    "project_id": "constructionestimator-f62d3",
+    "storage_bucket": "constructionestimator-f62d3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:595594270619:android:0203ab9f1d6f7cd77bb33e",
+        "android_client_info": {
+          "package_name": "com.example.construction_estimator_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCTOXowQDNfDyLH7W46Ef9SyFwXy7WW8Xs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
