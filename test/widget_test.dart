@@ -1,10 +1,11 @@
-import 'package:construction_estimator_app/app.dart';
 import 'package:construction_estimator_app/models/quotation_item.dart';
+import 'package:construction_estimator_app/screens/dashboard_screen.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('app shows dashboard shell', (WidgetTester tester) async {
-    await tester.pumpWidget(const ConstructionEstimatorApp());
+  testWidgets('dashboard shows overview metrics', (WidgetTester tester) async {
+    await tester.pumpWidget(const MaterialApp(home: DashboardScreen()));
 
     expect(find.text('Business overview'), findsOneWidget);
     expect(find.text('Total quotations'), findsOneWidget);

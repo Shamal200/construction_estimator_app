@@ -1,0 +1,188 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function memberPath(businessId, userId) {
+      return /databases/$(database)/documents/businesses/$(businessId)/members/$(userId);
+    }
+
+    function isActiveMember(businessId) {
+      return signedIn()
+        && exists(memberPath(businessId, request.auth.uid))
+        && get(memberPath(businessId, request.auth.uid)).data.isActive == true;
+    }
+
+    function hasRole(businessId, roles) {
+      return isActiveMember(businessId)
+        && get(memberPath(businessId, request.auth.uid)).data.role in roles;
+    }
+
+    function canManageBusiness(businessId) {
+      return hasRole(businessId, ['owner', 'admin']);
+    }
+
+    function validProfile(userId) {
+      return request.resource.data.keys().hasAll([
+          'uid', 'fullName', 'email', 'createdAt', 'activeBusinessId',
+          'businessIds', 'subscriptionPlan', 'subscriptionStatus'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'uid', 'fullName', 'email', 'createdAt', 'activeBusinessId',
+          'businessIds', 'subscriptionPlan', 'subscriptionStatus'
+        ])
+        && request.resource.data.uid == userId
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.fullName is string
+        && request.resource.data.fullName.size() > 0
+        && request.resource.data.fullName.size() <= 120
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.activeBusinessId == null
+        && request.resource.data.businessIds is list
+        && request.resource.data.businessIds.size() == 0
+        && request.resource.data.subscriptionPlan == 'free'
+        && request.resource.data.subscriptionStatus == 'active';
+    }
+
+    function validRecordId(documentId) {
+      return request.resource.data.id == documentId;
+    }
+
+    function validCustomer(documentId) {
+      return validRecordId(documentId)
+        && request.resource.data.fullName is string
+        && request.resource.data.fullName.size() > 0
+        && request.resource.data.fullName.size() <= 200
+        && request.resource.data.createdAt is string;
+    }
+
+    function validProject(documentId) {
+      return validRecordId(documentId)
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.customerId is string
+        && request.resource.data.status is string
+        && request.resource.data.startDate is string
+        && request.resource.data.expectedCompletionDate is string;
+    }
+
+    function validQuotation(documentId) {
+      return validRecordId(documentId)
+        && request.resource.data.quotationNumber is string
+        && request.resource.data.customerId is string
+        && request.resource.data.projectName is string
+        && request.resource.data.issueDate is string
+        && request.resource.data.validUntil is string
+        && request.resource.data.items is list
+        && request.resource.data.markupPercent is number
+        && request.resource.data.discount is number
+        && request.resource.data.taxPercent is number;
+    }
+
+    function validInvoice(documentId) {
+      return validRecordId(documentId)
+        && request.resource.data.invoiceNumber is string
+        && request.resource.data.customerId is string
+        && request.resource.data.projectId is string
+        && request.resource.data.issueDate is string
+        && request.resource.data.dueDate is string
+        && request.resource.data.items is list
+        && request.resource.data.subtotal is number
+        && request.resource.data.tax is number
+        && request.resource.data.total is number
+        && request.resource.data.amountPaid is number
+        && request.resource.data.balance is number;
+    }
+
+    function validMaterial(documentId) {
+      return validRecordId(documentId)
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.category is string
+        && request.resource.data.unit is string
+        && request.resource.data.cost is number
+        && request.resource.data.cost >= 0
+        && request.resource.data.isActive is bool;
+    }
+
+    match /users/{userId} {
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && validProfile(userId);
+
+      allow read: if signedIn() && request.auth.uid == userId;
+
+      allow update: if signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['fullName', 'email', 'activeBusinessId'])
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.fullName is string
+        && request.resource.data.fullName.size() > 0
+        && request.resource.data.fullName.size() <= 120
+        && (request.resource.data.activeBusinessId == null
+          || (request.resource.data.activeBusinessId in resource.data.businessIds
+            && isActiveMember(request.resource.data.activeBusinessId)));
+
+      allow delete: if false;
+    }
+
+    match /businesses/{businessId} {
+      allow read: if isActiveMember(businessId);
+      allow create, update, delete: if false;
+
+      match /members/{userId} {
+        allow read: if signedIn()
+          && (request.auth.uid == userId || canManageBusiness(businessId));
+        allow create, update, delete: if false;
+      }
+
+      match /invitations/{invitationId} {
+        allow read: if canManageBusiness(businessId);
+        allow create, update, delete: if false;
+      }
+
+      match /customers/{customerId} {
+        allow read: if isActiveMember(businessId);
+        allow create, update: if hasRole(businessId, ['owner', 'admin', 'estimator', 'employee'])
+          && validCustomer(customerId);
+        allow delete: if hasRole(businessId, ['owner', 'admin']);
+      }
+
+      match /projects/{projectId} {
+        allow read: if isActiveMember(businessId);
+        allow create, update: if hasRole(businessId, ['owner', 'admin', 'estimator', 'employee'])
+          && validProject(projectId);
+        allow delete: if hasRole(businessId, ['owner', 'admin']);
+      }
+
+      match /quotations/{quotationId} {
+        allow read: if isActiveMember(businessId);
+        allow create, update: if hasRole(businessId, ['owner', 'admin', 'estimator'])
+          && validQuotation(quotationId);
+        allow delete: if hasRole(businessId, ['owner', 'admin']);
+      }
+
+      match /invoices/{invoiceId} {
+        allow read: if isActiveMember(businessId);
+        allow create, update: if hasRole(businessId, ['owner', 'admin'])
+          && validInvoice(invoiceId);
+        allow delete: if hasRole(businessId, ['owner', 'admin']);
+      }
+
+      match /materials/{materialId} {
+        allow read: if isActiveMember(businessId);
+        allow create, update: if hasRole(businessId, ['owner', 'admin', 'estimator'])
+          && validMaterial(materialId);
+        allow delete: if hasRole(businessId, ['owner', 'admin']);
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

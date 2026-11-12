@@ -1,1 +1,26 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"constructionestimator-f62d3","appId":"1:595594270619:android:0203ab9f1d6f7cd77bb33e","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"constructionestimator-f62d3","configurations":{"android":"1:595594270619:android:0203ab9f1d6f7cd77bb33e","web":"1:595594270619:web:52cbb257d1356e707bb33e","windows":"1:595594270619:web:6c1f39fb8944dda97bb33e"}}}}}}
+{
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "constructionestimator-f62d3",
+          "appId": "1:595594270619:android:0203ab9f1d6f7cd77bb33e",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "constructionestimator-f62d3",
+          "configurations": {
+            "android": "1:595594270619:android:0203ab9f1d6f7cd77bb33e",
+            "web": "1:595594270619:web:52cbb257d1356e707bb33e",
+            "windows": "1:595594270619:web:6c1f39fb8944dda97bb33e"
+          }
+        }
+      }
+    }
+  }
+}

@@ -8,6 +8,7 @@ class ResponsiveScaffold extends StatelessWidget {
     required this.destinations,
     required this.onDestinationSelected,
     required this.body,
+    this.actions = const <Widget>[],
   });
 
   final String title;
@@ -15,6 +16,7 @@ class ResponsiveScaffold extends StatelessWidget {
   final List<NavigationDestination> destinations;
   final ValueChanged<int> onDestinationSelected;
   final Widget body;
+  final List<Widget> actions;
 
   @override
   Widget build(BuildContext context) {
@@ -24,14 +26,7 @@ class ResponsiveScaffold extends StatelessWidget {
       appBar: AppBar(
         title: Text(title),
         actions: [
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.notifications_none),
-          ),
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.search),
-          ),
+          ...actions,
         ],
       ),
       body: isDesktop
