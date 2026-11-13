@@ -35,7 +35,16 @@ class AuthProvider extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   bool get hasBusiness =>
       (_profile?.businessIds.isNotEmpty ?? false) || _businesses.isNotEmpty;
-  bool get hasActiveBusiness => (_profile?.activeBusinessId ?? '').isNotEmpty;
+ bool get hasActiveBusiness {
+  final activeId = _profile?.activeBusinessId;
+
+  if (activeId == null || activeId.isEmpty) {
+    return false;
+  }
+
+  return activeBusiness != null &&
+      membershipFor(activeId) != null;
+}
   BusinessMembership? membershipFor(String businessId) {
     for (final membership in _memberships) {
       if (membership.businessId == businessId && membership.isActive) {
