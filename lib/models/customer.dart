@@ -2,6 +2,7 @@ class Customer {
   const Customer({
     required this.id,
     required this.fullName,
+    this.customerNumber = '',
     this.companyName = '',
     this.phoneNumber = '',
     this.email = '',
@@ -11,6 +12,7 @@ class Customer {
   });
 
   final String id;
+  final String customerNumber;
   final String fullName;
   final String companyName;
   final String phoneNumber;
@@ -29,6 +31,7 @@ class Customer {
 
   Customer copyWith({
     String? id,
+    String? customerNumber,
     String? fullName,
     String? companyName,
     String? phoneNumber,
@@ -39,6 +42,7 @@ class Customer {
   }) {
     return Customer(
       id: id ?? this.id,
+      customerNumber: customerNumber ?? this.customerNumber,
       fullName: fullName ?? this.fullName,
       companyName: companyName ?? this.companyName,
       phoneNumber: phoneNumber ?? this.phoneNumber,
@@ -52,6 +56,7 @@ class Customer {
   Map<String, dynamic> toMap() {
     return {
       'id': id,
+      'customerNumber': customerNumber,
       'fullName': fullName,
       'companyName': companyName,
       'phoneNumber': phoneNumber,
@@ -65,6 +70,7 @@ class Customer {
   factory Customer.fromMap(Map<String, dynamic> map) {
     return Customer(
       id: map['id'] as String? ?? '',
+      customerNumber: map['customerNumber'] as String? ?? '',
       fullName: map['fullName'] as String? ?? '',
       companyName: map['companyName'] as String? ?? '',
       phoneNumber: map['phoneNumber'] as String? ?? '',

@@ -174,10 +174,20 @@ service cloud.firestore {
 
     function validCustomer(documentId) {
       return validRecordId(documentId)
+        && request.resource.data.customerNumber is string
+        && request.resource.data.customerNumber.matches('^[0-9]{3,}$')
         && request.resource.data.fullName is string
         && request.resource.data.fullName.size() > 0
         && request.resource.data.fullName.size() <= 200
         && request.resource.data.createdAt is string;
+    }
+
+    function validCustomerCounter() {
+      return request.resource.data.keys().hasOnly(['nextCustomerNumber'])
+        && request.resource.data.keys().hasAll(['nextCustomerNumber'])
+        && request.resource.data.nextCustomerNumber is int
+        && request.resource.data.nextCustomerNumber >= 1
+        && request.resource.data.nextCustomerNumber <= 2147483647;
     }
 
     function validProject(documentId) {
@@ -285,48 +295,81 @@ service cloud.firestore {
 
       match /customers/{customerId} {
         allow read: if isActiveMember(businessId);
+
         allow create, update: if hasRole(
             businessId,
             ['owner', 'admin', 'estimator', 'employee']
           )
           && validCustomer(customerId);
+
         allow delete: if hasRole(businessId, ['owner', 'admin']);
+      }
+
+      match /settings/{settingId} {
+        allow read: if settingId == 'customerCounter'
+          && isActiveMember(businessId);
+
+        allow create: if settingId == 'customerCounter'
+          && hasRole(
+            businessId,
+            ['owner', 'admin', 'estimator', 'employee']
+          )
+          && validCustomerCounter();
+
+        allow update: if settingId == 'customerCounter'
+          && hasRole(
+            businessId,
+            ['owner', 'admin', 'estimator', 'employee']
+          )
+          && validCustomerCounter()
+          && request.resource.data.nextCustomerNumber
+              > resource.data.nextCustomerNumber;
+
+        allow delete: if false;
       }
 
       match /projects/{projectId} {
         allow read: if isActiveMember(businessId);
+
         allow create, update: if hasRole(
             businessId,
             ['owner', 'admin', 'estimator', 'employee']
           )
           && validProject(projectId);
+
         allow delete: if hasRole(businessId, ['owner', 'admin']);
       }
 
       match /quotations/{quotationId} {
         allow read: if isActiveMember(businessId);
+
         allow create, update: if hasRole(
             businessId,
             ['owner', 'admin', 'estimator']
           )
           && validQuotation(quotationId);
+
         allow delete: if hasRole(businessId, ['owner', 'admin']);
       }
 
       match /invoices/{invoiceId} {
         allow read: if isActiveMember(businessId);
+
         allow create, update: if hasRole(businessId, ['owner', 'admin'])
           && validInvoice(invoiceId);
+
         allow delete: if hasRole(businessId, ['owner', 'admin']);
       }
 
       match /materials/{materialId} {
         allow read: if isActiveMember(businessId);
+
         allow create, update: if hasRole(
             businessId,
             ['owner', 'admin', 'estimator']
           )
           && validMaterial(materialId);
+
         allow delete: if hasRole(businessId, ['owner', 'admin']);
       }
     }

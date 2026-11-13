@@ -1,4 +1,3 @@
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -44,7 +43,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
     if (query.isEmpty) return customers;
 
     return customers.where((customer) {
-      return customer.fullName.toLowerCase().contains(query) ||
+      return customer.customerNumber.toLowerCase().contains(query) ||
+          customer.fullName.toLowerCase().contains(query) ||
           customer.companyName.toLowerCase().contains(query) ||
           customer.phoneNumber.toLowerCase().contains(query) ||
           customer.email.toLowerCase().contains(query);
@@ -68,7 +68,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
 
     try {
       if (customer == null) {
-        await _customerService.addCustomer(
+        final newCustomer = await _customerService.addCustomer(
           businessId: businessId,
           fullName: result.fullName,
           companyName: result.companyName,
@@ -76,6 +76,12 @@ class _CustomersScreenState extends State<CustomersScreen> {
           email: result.email,
           address: result.address,
           notes: result.notes,
+        );
+
+        if (!mounted) return;
+
+        _showMessage(
+          'Customer #${newCustomer.customerNumber} added successfully.',
         );
       } else {
         final updatedCustomer = customer.copyWith(
@@ -91,15 +97,11 @@ class _CustomersScreenState extends State<CustomersScreen> {
           businessId: businessId,
           customer: updatedCustomer,
         );
+
+        if (!mounted) return;
+
+        _showMessage('Customer updated successfully.');
       }
-
-      if (!mounted) return;
-
-      _showMessage(
-        customer == null
-            ? 'Customer added successfully.'
-            : 'Customer updated successfully.',
-      );
     } on FirebaseException catch (error) {
       if (!mounted) return;
       _showMessage(_firebaseErrorMessage(error));
@@ -152,6 +154,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
       );
 
       if (!mounted) return;
+
       _showMessage('Customer deleted successfully.');
     } on FirebaseException catch (error) {
       if (!mounted) return;
@@ -164,7 +167,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
 
   String _firebaseErrorMessage(FirebaseException error) {
     if (error.code == 'permission-denied') {
-      return 'You do not have permission to perform this action.';
+      return 'Permission denied. Check that the latest Firestore rules '
+          'have been published.';
     }
 
     if (error.code == 'unavailable') {
@@ -227,7 +231,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
               setState(() => _searchQuery = value);
             },
             decoration: InputDecoration(
-              hintText: 'Search by name, company, phone or email',
+              hintText:
+                  'Search by customer number, name, company, phone or email',
               prefixIcon: const Icon(Icons.search),
               suffixIcon: _searchQuery.isEmpty
                   ? null
@@ -281,7 +286,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
                         : 'No matching customers',
                     message: _searchQuery.isEmpty
                         ? 'Add your first customer to get started.'
-                        : 'Try another name, company, phone number or email.',
+                        : 'Try another customer number, name, company, '
+                            'phone or email.',
                     action: _searchQuery.isEmpty
                         ? FilledButton.icon(
                             onPressed: () => _openCustomerForm(),
@@ -308,16 +314,19 @@ class _CustomersScreenState extends State<CustomersScreen> {
                         ),
                         leading: CircleAvatar(
                           child: Text(
-                            customer.fullName.isEmpty
-                                ? '?'
-                                : customer.fullName[0].toUpperCase(),
+                            customer.customerNumber.isNotEmpty
+                                ? customer.customerNumber
+                                : (customer.fullName.isEmpty
+                                    ? '?'
+                                    : customer.fullName[0].toUpperCase()),
                             style: const TextStyle(
                               fontWeight: FontWeight.w700,
+                              fontSize: 12,
                             ),
                           ),
                         ),
                         title: Text(
-                          customer.fullName,
+                          '${customer.customerNumber}  ${customer.fullName}',
                           style: const TextStyle(
                             fontWeight: FontWeight.w600,
                           ),
@@ -439,18 +448,23 @@ class _CustomerFormDialogState extends State<CustomerFormDialog> {
     _fullNameController = TextEditingController(
       text: customer?.fullName ?? '',
     );
+
     _companyController = TextEditingController(
       text: customer?.companyName ?? '',
     );
+
     _phoneController = TextEditingController(
       text: customer?.phoneNumber ?? '',
     );
+
     _emailController = TextEditingController(
       text: customer?.email ?? '',
     );
+
     _addressController = TextEditingController(
       text: customer?.address ?? '',
     );
+
     _notesController = TextEditingController(
       text: customer?.notes ?? '',
     );
