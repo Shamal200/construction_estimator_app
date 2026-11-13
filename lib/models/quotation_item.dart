@@ -1,21 +1,23 @@
+
 class QuotationItem {
   const QuotationItem({
     required this.id,
     required this.name,
-    required this.description,
+    this.description = '',
     required this.unit,
     required this.quantity,
     required this.materialCost,
     required this.labourCost,
-    required this.markupPercent,
-    required this.discount,
-    required this.taxPercent,
+    this.markupPercent = 0,
+    this.discount = 0,
+    this.taxPercent = 0,
   });
 
   final String id;
   final String name;
   final String description;
   final String unit;
+
   final double quantity;
   final double materialCost;
   final double labourCost;
@@ -23,11 +25,18 @@ class QuotationItem {
   final double discount;
   final double taxPercent;
 
-  double get directCost => (materialCost + labourCost) * quantity;
+  double get unitRate => materialCost + labourCost;
 
-  double get subtotal => directCost + (directCost * (markupPercent / 100)) - discount;
+  double get directCost => unitRate * quantity;
 
-  double get taxAmount => subtotal * (taxPercent / 100);
+  double get markupAmount =>
+      directCost * (markupPercent / 100);
+
+  double get subtotal =>
+      directCost + markupAmount - discount;
+
+  double get taxAmount =>
+      subtotal * (taxPercent / 100);
 
   double get total => subtotal + taxAmount;
 
@@ -79,11 +88,15 @@ class QuotationItem {
       description: map['description'] as String? ?? '',
       unit: map['unit'] as String? ?? '',
       quantity: (map['quantity'] as num?)?.toDouble() ?? 0,
-      materialCost: (map['materialCost'] as num?)?.toDouble() ?? 0,
-      labourCost: (map['labourCost'] as num?)?.toDouble() ?? 0,
-      markupPercent: (map['markupPercent'] as num?)?.toDouble() ?? 0,
+      materialCost:
+          (map['materialCost'] as num?)?.toDouble() ?? 0,
+      labourCost:
+          (map['labourCost'] as num?)?.toDouble() ?? 0,
+      markupPercent:
+          (map['markupPercent'] as num?)?.toDouble() ?? 0,
       discount: (map['discount'] as num?)?.toDouble() ?? 0,
-      taxPercent: (map['taxPercent'] as num?)?.toDouble() ?? 0,
+      taxPercent:
+          (map['taxPercent'] as num?)?.toDouble() ?? 0,
     );
   }
 }

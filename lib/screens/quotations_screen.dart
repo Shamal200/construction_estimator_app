@@ -1,16 +1,109 @@
-import 'package:construction_estimator_app/core/utils/currency_formatter.dart';
-import 'package:flutter/material.dart';
 
-class QuotationsScreen extends StatelessWidget {
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+import 'package:printing/printing.dart';
+import 'package:provider/provider.dart';
+
+import '../core/utils/currency_formatter.dart';
+import '../models/quotation.dart';
+import '../providers/auth_provider.dart';
+import '../services/quotation_pdf_service.dart';
+import '../services/quotation_service.dart';
+import 'quotation_form_screen.dart';
+
+class QuotationsScreen extends StatefulWidget {
   const QuotationsScreen({super.key});
 
   @override
+  State<QuotationsScreen> createState() => _QuotationsScreenState();
+}
+
+class _QuotationsScreenState extends State<QuotationsScreen> {
+  final _service = QuotationService();
+  final _pdf = QuotationPdfService();
+
+  Future<void> _create() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const QuotationFormScreen(),
+      ),
+    );
+  }
+
+  Future<void> _print(dynamic business, Quotation quote) async {
+    try {
+      await Printing.layoutPdf(
+        name: '${quote.quotationNumber}.pdf',
+        onLayout: (_) => _pdf.build(
+          business: business,
+          quote: quote,
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        _message('PDF generation failed: $e');
+      }
+    }
+  }
+
+  Future<void> _delete(
+    Quotation quote,
+    String businessId,
+  ) async {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete quotation?'),
+        content: Text(
+          'Delete ${quote.quotationNumber}? '
+          'This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (yes != true) return;
+
+    try {
+      await _service.deleteQuotation(
+        businessId: businessId,
+        quotationId: quote.id,
+      );
+    } on FirebaseException catch (e) {
+      if (mounted) {
+        _message(e.message ?? 'Unable to delete quotation.');
+      }
+    }
+  }
+
+  void _message(String text) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text(text)),
+      );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final quotations = [
-      {'number': 'QT-1001', 'customer': 'Amit Patel', 'status': 'Pending', 'total': CurrencyFormatter.format(14850.0)},
-      {'number': 'QT-1002', 'customer': 'N. Singh', 'status': 'Approved', 'total': CurrencyFormatter.format(22600.0)},
-      {'number': 'QT-1003', 'customer': 'J. Harris', 'status': 'Draft', 'total': CurrencyFormatter.format(9800.0)},
-    ];
+    final business =
+        context.watch<AuthProvider>().activeBusiness;
+
+    if (business == null) {
+      return const Center(
+        child: Text('Please select a business.'),
+      );
+    }
 
     return Padding(
       padding: const EdgeInsets.all(20),
@@ -22,46 +115,138 @@ class QuotationsScreen extends StatelessWidget {
               Expanded(
                 child: Text(
                   'Quotations',
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: Theme.of(context)
+                      .textTheme
+                      .headlineMedium
+                      ?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                 ),
               ),
               FilledButton.icon(
-                onPressed: () {},
+                onPressed: _create,
                 icon: const Icon(Icons.add),
                 label: const Text('New quotation'),
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 7),
+          const Text(
+            'Create, manage and generate professional PDF quotations.',
+          ),
+          const SizedBox(height: 18),
           Expanded(
-            child: Card(
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: DataTable(
-                  columns: const [
-                    DataColumn(label: Text('Quotation #')),
-                    DataColumn(label: Text('Customer')),
-                    DataColumn(label: Text('Status')),
-                    DataColumn(label: Text('Total')),
-                  ],
-                  rows: quotations
-                      .map(
-                        (item) => DataRow(
-                          cells: [
-                            DataCell(Text(item['number'] as String)),
-                            DataCell(Text(item['customer'] as String)),
-                            DataCell(
-                              Text(item['status'] as String),
+            child: StreamBuilder<List<Quotation>>(
+              stream: _service.watchQuotations(business.id),
+              builder: (context, snap) {
+                if (snap.connectionState ==
+                    ConnectionState.waiting) {
+                  return const Center(
+                    child: CircularProgressIndicator(),
+                  );
+                }
+
+                if (snap.hasError) {
+                  return Center(
+                    child: Text(
+                      'Unable to load quotations.\n${snap.error}',
+                      textAlign: TextAlign.center,
+                    ),
+                  );
+                }
+
+                final quotes = snap.data ?? [];
+
+                if (quotes.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.request_quote_outlined,
+                          size: 58,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'No quotations yet',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleLarge,
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Create your first quotation to get started.',
+                        ),
+                        const SizedBox(height: 16),
+                        FilledButton.icon(
+                          onPressed: _create,
+                          icon: const Icon(Icons.add),
+                          label: const Text(
+                            'Create quotation',
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                return Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: ListView.separated(
+                    itemCount: quotes.length,
+                    separatorBuilder: (_, __) =>
+                        const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final q = quotes[index];
+
+                      return ListTile(
+                        leading: const CircleAvatar(
+                          backgroundColor: Color(0xFFEAF0F8),
+                          child: Icon(
+                            Icons.description_outlined,
+                            color: Color(0xFF29486F),
+                          ),
+                        ),
+                        title: Text(
+                          '${q.quotationNumber}  •  ${q.customerName}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        subtitle: Text(
+                          '${q.projectName}  •  ${q.status}  •  '
+                          '${CurrencyFormatter.format(
+                            q.grandTotal,
+                            currency: q.currency,
+                          )}',
+                        ),
+                        trailing: Wrap(
+                          spacing: 2,
+                          children: [
+                            IconButton(
+                              tooltip: 'Generate PDF',
+                              onPressed: () => _print(business, q),
+                              icon: const Icon(
+                                Icons.picture_as_pdf_outlined,
+                              ),
                             ),
-                            DataCell(Text(item['total'] as String)),
+                            IconButton(
+                              tooltip: 'Delete quotation',
+                              onPressed: () => _delete(
+                                q,
+                                business.id,
+                              ),
+                              icon: const Icon(
+                                Icons.delete_outline,
+                              ),
+                            ),
                           ],
                         ),
-                      )
-                      .toList(),
-                ),
-              ),
+                      );
+                    },
+                  ),
+                );
+              },
             ),
           ),
         ],

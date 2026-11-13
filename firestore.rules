@@ -1,3 +1,4 @@
+
 rules_version = '2';
 
 service cloud.firestore {
@@ -190,6 +191,14 @@ service cloud.firestore {
         && request.resource.data.nextCustomerNumber <= 2147483647;
     }
 
+    function validQuotationCounter() {
+      return request.resource.data.keys().hasOnly(['nextQuotationNumber'])
+        && request.resource.data.keys().hasAll(['nextQuotationNumber'])
+        && request.resource.data.nextQuotationNumber is int
+        && request.resource.data.nextQuotationNumber >= 1
+        && request.resource.data.nextQuotationNumber <= 2147483647;
+    }
+
     function validProject(documentId) {
       return validRecordId(documentId)
         && request.resource.data.name is string
@@ -306,24 +315,55 @@ service cloud.firestore {
       }
 
       match /settings/{settingId} {
-        allow read: if settingId == 'customerCounter'
+        allow read: if (
+            settingId == 'customerCounter'
+            || settingId == 'quotationCounter'
+          )
           && isActiveMember(businessId);
 
-        allow create: if settingId == 'customerCounter'
-          && hasRole(
-            businessId,
-            ['owner', 'admin', 'estimator', 'employee']
-          )
-          && validCustomerCounter();
+        allow create: if (
+            (
+              settingId == 'customerCounter'
+              && hasRole(
+                businessId,
+                ['owner', 'admin', 'estimator', 'employee']
+              )
+              && validCustomerCounter()
+            )
+            ||
+            (
+              settingId == 'quotationCounter'
+              && hasRole(
+                businessId,
+                ['owner', 'admin', 'estimator']
+              )
+              && validQuotationCounter()
+            )
+          );
 
-        allow update: if settingId == 'customerCounter'
-          && hasRole(
-            businessId,
-            ['owner', 'admin', 'estimator', 'employee']
-          )
-          && validCustomerCounter()
-          && request.resource.data.nextCustomerNumber
-              > resource.data.nextCustomerNumber;
+        allow update: if (
+            (
+              settingId == 'customerCounter'
+              && hasRole(
+                businessId,
+                ['owner', 'admin', 'estimator', 'employee']
+              )
+              && validCustomerCounter()
+              && request.resource.data.nextCustomerNumber
+                  > resource.data.nextCustomerNumber
+            )
+            ||
+            (
+              settingId == 'quotationCounter'
+              && hasRole(
+                businessId,
+                ['owner', 'admin', 'estimator']
+              )
+              && validQuotationCounter()
+              && request.resource.data.nextQuotationNumber
+                  > resource.data.nextQuotationNumber
+            )
+          );
 
         allow delete: if false;
       }
