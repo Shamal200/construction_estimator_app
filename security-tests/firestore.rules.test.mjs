@@ -4,13 +4,15 @@ import { after, before, beforeEach, test } from 'node:test';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
 import {
   Timestamp,
+  arrayUnion,
   deleteDoc,
   doc,
   getDoc,
+  serverTimestamp,
   setDoc,
   updateDoc,
+  writeBatch,
 } from 'firebase/firestore';
-
 const projectId = 'demo-buildcalc-rules';
 const rules = await readFile(new URL('../firestore.rules', import.meta.url), 'utf8');
 let testEnvironment;
@@ -347,4 +349,156 @@ test('unauthorized users cannot delete business records', async () => {
   await assertFails(deleteDoc(
     doc(viewerDb, 'businesses/business-a/quotations/quotation-1'),
   ));
+});
+test('a user can atomically create a business and become its owner', async () => {
+  const uid = 'new-business-owner';
+  const db = authenticatedDb(uid);
+  const businessId = 'new-business';
+
+  // Create the initial user profile.
+  await assertSucceeds(
+    setDoc(doc(db, `users/${uid}`), userProfile(uid)),
+  );
+
+  // All three related writes must happen in one batch.
+  const batch = writeBatch(db);
+
+  batch.set(doc(db, `businesses/${businessId}`), {
+    id: businessId,
+    name: 'New Test Business',
+    address: '1 Test Street',
+    phone: '123456789',
+    email: `${uid}@example.test`,
+    website: '',
+    businessRegistrationNumber: '',
+    taxRegistrationNumber: '',
+    currency: 'FJD',
+    defaultTaxRate: 12.5,
+    createdAt: serverTimestamp(),
+    ownerId: uid,
+    status: 'active',
+  });
+
+  batch.set(
+    doc(db, `businesses/${businessId}/members/${uid}`),
+    {
+      userId: uid,
+      businessId,
+      role: 'owner',
+      joinedAt: serverTimestamp(),
+      isActive: true,
+      invitationId: null,
+    },
+  );
+
+  batch.update(doc(db, `users/${uid}`), {
+    businessIds: arrayUnion(businessId),
+    activeBusinessId: businessId,
+  });
+
+  await assertSucceeds(batch.commit());
+
+  await assertSucceeds(
+    getDoc(doc(db, `businesses/${businessId}`)),
+  );
+
+  await assertSucceeds(
+    getDoc(doc(db, `businesses/${businessId}/members/${uid}`)),
+  );
+
+  const profile = await getDoc(doc(db, `users/${uid}`));
+
+  assert.deepEqual(profile.data().businessIds, [businessId]);
+  assert.equal(profile.data().activeBusinessId, businessId);
+});
+
+test('a user cannot create a business without its owner membership', async () => {
+  const uid = 'incomplete-business-owner';
+  const db = authenticatedDb(uid);
+  const businessId = 'incomplete-business';
+
+  await assertSucceeds(
+    setDoc(doc(db, `users/${uid}`), userProfile(uid)),
+  );
+
+  await assertFails(
+    setDoc(doc(db, `businesses/${businessId}`), {
+      id: businessId,
+      name: 'Incomplete Business',
+      address: '1 Test Street',
+      phone: '123456789',
+      email: `${uid}@example.test`,
+      website: '',
+      businessRegistrationNumber: '',
+      taxRegistrationNumber: '',
+      currency: 'FJD',
+      defaultTaxRate: 12.5,
+      createdAt: serverTimestamp(),
+      ownerId: uid,
+      status: 'active',
+    }),
+  );
+});
+
+test('a user cannot create an owner membership for an existing business', async () => {
+  const uid = 'existing-business-outsider';
+  const db = authenticatedDb(uid);
+
+  await assertSucceeds(
+    setDoc(doc(db, `users/${uid}`), userProfile(uid)),
+  );
+
+  await assertFails(
+    setDoc(
+      doc(db, `businesses/business-a/members/${uid}`),
+      membership('business-a', uid, 'owner'),
+    ),
+  );
+});
+
+test('a user cannot create a business using another user as owner', async () => {
+  const uid = 'business-spoofer';
+  const db = authenticatedDb(uid);
+  const businessId = 'spoofed-business';
+
+  await assertSucceeds(
+    setDoc(doc(db, `users/${uid}`), userProfile(uid)),
+  );
+
+  const batch = writeBatch(db);
+
+  batch.set(doc(db, `businesses/${businessId}`), {
+    id: businessId,
+    name: 'Spoofed Business',
+    address: '1 Test Street',
+    phone: '123456789',
+    email: 'victim@example.test',
+    website: '',
+    businessRegistrationNumber: '',
+    taxRegistrationNumber: '',
+    currency: 'FJD',
+    defaultTaxRate: 12.5,
+    createdAt: serverTimestamp(),
+    ownerId: 'user-owner',
+    status: 'active',
+  });
+
+  batch.set(
+    doc(db, `businesses/${businessId}/members/${uid}`),
+    {
+      userId: uid,
+      businessId,
+      role: 'owner',
+      joinedAt: serverTimestamp(),
+      isActive: true,
+      invitationId: null,
+    },
+  );
+
+  batch.update(doc(db, `users/${uid}`), {
+    businessIds: arrayUnion(businessId),
+    activeBusinessId: businessId,
+  });
+
+  await assertFails(batch.commit());
 });

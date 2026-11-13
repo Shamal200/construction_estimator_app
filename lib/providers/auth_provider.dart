@@ -35,16 +35,16 @@ class AuthProvider extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   bool get hasBusiness =>
       (_profile?.businessIds.isNotEmpty ?? false) || _businesses.isNotEmpty;
- bool get hasActiveBusiness {
-  final activeId = _profile?.activeBusinessId;
+  bool get hasActiveBusiness {
+    final activeId = _profile?.activeBusinessId;
 
-  if (activeId == null || activeId.isEmpty) {
-    return false;
+    if (activeId == null || activeId.isEmpty) {
+      return false;
+    }
+
+    return activeBusiness != null && membershipFor(activeId) != null;
   }
 
-  return activeBusiness != null &&
-      membershipFor(activeId) != null;
-}
   BusinessMembership? membershipFor(String businessId) {
     for (final membership in _memberships) {
       if (membership.businessId == businessId && membership.isActive) {
@@ -70,6 +70,11 @@ class AuthProvider extends ChangeNotifier {
   Future<void> initialize() async {
     _user = _auth.currentUser;
     await _refreshSession(createMissingProfile: true);
+  }
+
+  Future<void> refreshSession() async {
+    _user = _auth.currentUser;
+    await _refreshSession();
   }
 
   Future<void> _handleAuthStateChange(User? user) async {

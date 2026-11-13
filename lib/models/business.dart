@@ -12,6 +12,7 @@ class Business {
     required this.createdAt,
     required this.ownerId,
     this.website = '',
+    this.businessRegistrationNumber = '',
     this.taxRegistrationNumber = '',
     this.status = 'active',
   });
@@ -22,6 +23,7 @@ class Business {
   final String phone;
   final String email;
   final String website;
+  final String businessRegistrationNumber;
   final String taxRegistrationNumber;
   final String currency;
   final double defaultTaxRate;
@@ -34,7 +36,9 @@ class Business {
         address.trim().isNotEmpty &&
         phone.trim().isNotEmpty &&
         email.trim().isNotEmpty &&
-        currency.trim().isNotEmpty;
+        currency.trim().isNotEmpty &&
+        defaultTaxRate >= 0 &&
+        defaultTaxRate <= 100;
   }
 
   Map<String, dynamic> toMap() {
@@ -45,6 +49,7 @@ class Business {
       'phone': phone,
       'email': email,
       'website': website,
+      'businessRegistrationNumber': businessRegistrationNumber,
       'taxRegistrationNumber': taxRegistrationNumber,
       'currency': currency,
       'defaultTaxRate': defaultTaxRate,
@@ -55,12 +60,16 @@ class Business {
   }
 
   factory Business.fromMap(Map<String, dynamic> map, String id) {
-    final dynamic createdValue = map['createdAt'];
-    final createdAt = createdValue is Timestamp
-        ? createdValue.toDate()
-        : (createdValue is String
-              ? DateTime.tryParse(createdValue)
-              : DateTime.now());
+    final createdValue = map['createdAt'];
+
+    final DateTime createdAt;
+    if (createdValue is Timestamp) {
+      createdAt = createdValue.toDate();
+    } else if (createdValue is String) {
+      createdAt = DateTime.tryParse(createdValue) ?? DateTime.now();
+    } else {
+      createdAt = DateTime.now();
+    }
 
     return Business(
       id: id,
@@ -69,10 +78,12 @@ class Business {
       phone: map['phone'] as String? ?? '',
       email: map['email'] as String? ?? '',
       website: map['website'] as String? ?? '',
+      businessRegistrationNumber:
+          map['businessRegistrationNumber'] as String? ?? '',
       taxRegistrationNumber: map['taxRegistrationNumber'] as String? ?? '',
       currency: map['currency'] as String? ?? '',
       defaultTaxRate: (map['defaultTaxRate'] as num?)?.toDouble() ?? 0,
-      createdAt: createdAt ?? DateTime.now(),
+      createdAt: createdAt,
       ownerId: map['ownerId'] as String? ?? '',
       status: map['status'] as String? ?? 'active',
     );

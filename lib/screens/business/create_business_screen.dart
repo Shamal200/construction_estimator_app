@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../providers/auth_provider.dart';
 import '../../services/business_service.dart';
 
 class CreateBusinessScreen extends StatefulWidget {
@@ -12,20 +13,24 @@ class CreateBusinessScreen extends StatefulWidget {
 
 class _CreateBusinessScreenState extends State<CreateBusinessScreen> {
   final _formKey = GlobalKey<FormState>();
+
   final _companyNameController = TextEditingController();
+  final _registrationController = TextEditingController();
   final _addressController = TextEditingController();
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
   final _websiteController = TextEditingController();
   final _taxController = TextEditingController();
-  final _currencyController = TextEditingController(text: 'USD');
-  final _defaultTaxController = TextEditingController(text: '10');
+  final _currencyController = TextEditingController(text: 'FJD');
+  final _defaultTaxController = TextEditingController(text: '12.5');
+
   bool _isSubmitting = false;
   String? _errorMessage;
 
   @override
   void dispose() {
     _companyNameController.dispose();
+    _registrationController.dispose();
     _addressController.dispose();
     _phoneController.dispose();
     _emailController.dispose();
@@ -36,10 +41,45 @@ class _CreateBusinessScreenState extends State<CreateBusinessScreen> {
     super.dispose();
   }
 
+  String? _requiredValidator(String? value, String field) {
+    if (value == null || value.trim().isEmpty) {
+      return '$field is required';
+    }
+    return null;
+  }
+
+  String? _emailValidator(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Business email is required';
+    }
+
+    final emailPattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+
+    if (!emailPattern.hasMatch(value.trim())) {
+      return 'Enter a valid email address';
+    }
+
+    return null;
+  }
+
+  String? _taxValidator(String? value) {
+    final tax = double.tryParse(value ?? '');
+
+    if (tax == null || !tax.isFinite || tax < 0 || tax > 100) {
+      return 'Enter a percentage between 0 and 100';
+    }
+
+    return null;
+  }
+
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) {
       return;
     }
+
+    // Get providers before any asynchronous operation.
+    final businessService = context.read<BusinessService>();
+    final authProvider = context.read<AuthProvider>();
 
     setState(() {
       _isSubmitting = true;
@@ -47,32 +87,33 @@ class _CreateBusinessScreenState extends State<CreateBusinessScreen> {
     });
 
     try {
-      final service = context.read<BusinessService>();
-      await service.createBusiness(
-        name: _companyNameController.text.trim(),
-        address: _addressController.text.trim(),
-        phone: _phoneController.text.trim(),
-        email: _emailController.text.trim(),
-        currency: _currencyController.text.trim(),
-        defaultTaxRate: double.tryParse(_defaultTaxController.text) ?? 0,
-        website: _websiteController.text.trim(),
-        taxRegistrationNumber: _taxController.text.trim(),
+      await businessService.createBusiness(
+        name: _companyNameController.text,
+        address: _addressController.text,
+        phone: _phoneController.text,
+        email: _emailController.text,
+        currency: _currencyController.text,
+        defaultTaxRate: double.parse(_defaultTaxController.text.trim()),
+        website: _websiteController.text,
+        businessRegistrationNumber: _registrationController.text,
+        taxRegistrationNumber: _taxController.text,
       );
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Business creation is ready once the backend is deployed.',
-            ),
-          ),
-        );
-        Navigator.of(context).pop();
-      }
-    } on UnsupportedError catch (error) {
-      setState(() => _errorMessage = error.message);
+      await authProvider.refreshSession();
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Business created successfully.')),
+      );
+
+      Navigator.of(context).pop();
     } catch (error) {
-      setState(() => _errorMessage = error.toString());
+      if (!mounted) return;
+
+      setState(() {
+        _errorMessage = error.toString();
+      });
     } finally {
       if (mounted) {
         setState(() => _isSubmitting = false);
@@ -103,34 +144,20 @@ class _CreateBusinessScreenState extends State<CreateBusinessScreen> {
                             ?.copyWith(fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 20),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextFormField(
-                              controller: _companyNameController,
-                              decoration: const InputDecoration(
-                                labelText: 'Company name',
-                              ),
-                              validator: (value) =>
-                                  (value == null || value.trim().isEmpty)
-                                  ? 'Company name is required'
-                                  : null,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: TextFormField(
-                              controller: _currencyController,
-                              decoration: const InputDecoration(
-                                labelText: 'Currency',
-                              ),
-                              validator: (value) =>
-                                  (value == null || value.trim().isEmpty)
-                                  ? 'Currency is required'
-                                  : null,
-                            ),
-                          ),
-                        ],
+                      TextFormField(
+                        controller: _companyNameController,
+                        decoration: const InputDecoration(
+                          labelText: 'Company name',
+                        ),
+                        validator: (value) =>
+                            _requiredValidator(value, 'Company name'),
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _registrationController,
+                        decoration: const InputDecoration(
+                          labelText: 'Business registration number (optional)',
+                        ),
                       ),
                       const SizedBox(height: 16),
                       TextFormField(
@@ -139,9 +166,7 @@ class _CreateBusinessScreenState extends State<CreateBusinessScreen> {
                           labelText: 'Business address',
                         ),
                         validator: (value) =>
-                            (value == null || value.trim().isEmpty)
-                            ? 'Address is required'
-                            : null,
+                            _requiredValidator(value, 'Address'),
                       ),
                       const SizedBox(height: 16),
                       Row(
@@ -149,13 +174,12 @@ class _CreateBusinessScreenState extends State<CreateBusinessScreen> {
                           Expanded(
                             child: TextFormField(
                               controller: _phoneController,
+                              keyboardType: TextInputType.phone,
                               decoration: const InputDecoration(
                                 labelText: 'Phone number',
                               ),
                               validator: (value) =>
-                                  (value == null || value.trim().isEmpty)
-                                  ? 'Phone number is required'
-                                  : null,
+                                  _requiredValidator(value, 'Phone number'),
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -166,49 +190,62 @@ class _CreateBusinessScreenState extends State<CreateBusinessScreen> {
                               decoration: const InputDecoration(
                                 labelText: 'Business email',
                               ),
-                              validator: (value) =>
-                                  (value == null || value.trim().isEmpty)
-                                  ? 'Business email is required'
-                                  : null,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextFormField(
-                              controller: _websiteController,
-                              decoration: const InputDecoration(
-                                labelText: 'Website (optional)',
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: TextFormField(
-                              controller: _taxController,
-                              decoration: const InputDecoration(
-                                labelText: 'Tax registration no. (optional)',
-                              ),
+                              validator: _emailValidator,
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 16),
                       TextFormField(
-                        controller: _defaultTaxController,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
+                        controller: _websiteController,
+                        keyboardType: TextInputType.url,
                         decoration: const InputDecoration(
-                          labelText: 'Default tax percentage',
+                          labelText: 'Website (optional)',
                         ),
-                        validator: (value) =>
-                            (double.tryParse(value ?? '') == null)
-                            ? 'Enter a valid tax percentage'
-                            : null,
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _taxController,
+                        decoration: const InputDecoration(
+                          labelText: 'Tax registration number (optional)',
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: _currencyController,
+                              textCapitalization: TextCapitalization.characters,
+                              maxLength: 3,
+                              decoration: const InputDecoration(
+                                labelText: 'Currency code',
+                                hintText: 'FJD',
+                                counterText: '',
+                              ),
+                              validator: (value) {
+                                if (value == null || value.trim().length != 3) {
+                                  return 'Enter a 3-letter code';
+                                }
+                                return null;
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextFormField(
+                              controller: _defaultTaxController,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              decoration: const InputDecoration(
+                                labelText: 'Default tax (%)',
+                              ),
+                              validator: _taxValidator,
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 20),
                       if (_errorMessage != null)
@@ -221,8 +258,7 @@ class _CreateBusinessScreenState extends State<CreateBusinessScreen> {
                         ),
                       FilledButton.icon(
                         onPressed: _isSubmitting ? null : _submit,
-                        icon: const Icon(Icons.add_business),
-                        label: _isSubmitting
+                        icon: _isSubmitting
                             ? const SizedBox(
                                 width: 18,
                                 height: 18,
@@ -230,7 +266,12 @@ class _CreateBusinessScreenState extends State<CreateBusinessScreen> {
                                   strokeWidth: 2,
                                 ),
                               )
-                            : const Text('Create business'),
+                            : const Icon(Icons.add_business),
+                        label: Text(
+                          _isSubmitting
+                              ? 'Creating business...'
+                              : 'Create business',
+                        ),
                       ),
                     ],
                   ),

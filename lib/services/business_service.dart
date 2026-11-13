@@ -16,6 +16,7 @@ class BusinessService {
 
   Future<AppUser?> loadUserProfile(String userId) async {
     final doc = await _firestore.collection('users').doc(userId).get();
+
     if (!doc.exists) {
       return null;
     }
@@ -33,9 +34,11 @@ class BusinessService {
           .collection('businesses')
           .doc(businessId)
           .get();
+
       if (!doc.exists) {
         return null;
       }
+
       return Business.fromMap(
         doc.data() ?? const <String, dynamic>{},
         businessId,
@@ -48,11 +51,13 @@ class BusinessService {
 
   Future<List<BusinessMembership>> loadMembershipsForUser(String userId) async {
     final user = await _firestore.collection('users').doc(userId).get();
+
     final businessIds = List<String>.from(
       user.data()?['businessIds'] as List? ?? const <String>[],
     );
 
     final memberships = <BusinessMembership>[];
+
     for (final businessId in businessIds) {
       final doc = await _firestore
           .collection('businesses')
@@ -85,18 +90,93 @@ class BusinessService {
     required String currency,
     required double defaultTaxRate,
     required String website,
+    required String businessRegistrationNumber,
     required String taxRegistrationNumber,
   }) async {
     final user = _auth.currentUser;
+
     if (user == null) {
       throw const FormatException(
-        'A signed-in user is required to create a business.',
+        'You must be signed in to create a business.',
       );
     }
 
-    throw UnsupportedError(
-      'Creating a business requires trusted backend logic. It is intentionally unavailable on the Spark cloud project; use the local Firebase emulators for development.',
+    final cleanName = name.trim();
+    final cleanAddress = address.trim();
+    final cleanPhone = phone.trim();
+    final cleanEmail = email.trim();
+    final cleanCurrency = currency.trim().toUpperCase();
+
+    if (cleanName.isEmpty ||
+        cleanAddress.isEmpty ||
+        cleanPhone.isEmpty ||
+        cleanEmail.isEmpty ||
+        cleanCurrency.length != 3) {
+      throw const FormatException('Please provide valid business details.');
+    }
+
+    if (!defaultTaxRate.isFinite ||
+        defaultTaxRate < 0 ||
+        defaultTaxRate > 100) {
+      throw const FormatException(
+        'The default tax percentage must be between 0 and 100.',
+      );
+    }
+
+    final userRef = _firestore.collection('users').doc(user.uid);
+    final businessRef = _firestore.collection('businesses').doc();
+    final memberRef = businessRef.collection('members').doc(user.uid);
+
+    final business = Business(
+      id: businessRef.id,
+      name: cleanName,
+      address: cleanAddress,
+      phone: cleanPhone,
+      email: cleanEmail,
+      website: website.trim(),
+      businessRegistrationNumber: businessRegistrationNumber.trim(),
+      taxRegistrationNumber: taxRegistrationNumber.trim(),
+      currency: cleanCurrency,
+      defaultTaxRate: defaultTaxRate,
+      createdAt: DateTime.now(),
+      ownerId: user.uid,
     );
+
+    final batch = _firestore.batch();
+
+    batch.set(businessRef, {
+      'id': businessRef.id,
+      'name': business.name,
+      'address': business.address,
+      'phone': business.phone,
+      'email': business.email,
+      'website': business.website,
+      'businessRegistrationNumber': business.businessRegistrationNumber,
+      'taxRegistrationNumber': business.taxRegistrationNumber,
+      'currency': business.currency,
+      'defaultTaxRate': business.defaultTaxRate,
+      'createdAt': FieldValue.serverTimestamp(),
+      'ownerId': user.uid,
+      'status': 'active',
+    });
+
+    batch.set(memberRef, {
+      'userId': user.uid,
+      'businessId': businessRef.id,
+      'role': 'owner',
+      'joinedAt': FieldValue.serverTimestamp(),
+      'isActive': true,
+      'invitationId': null,
+    });
+
+    batch.update(userRef, {
+      'businessIds': FieldValue.arrayUnion([businessRef.id]),
+      'activeBusinessId': businessRef.id,
+    });
+
+    await batch.commit();
+
+    return business;
   }
 
   Future<BusinessInvitation> createInvitation({
@@ -106,7 +186,7 @@ class BusinessService {
     required DateTime expiresAt,
   }) async {
     throw UnsupportedError(
-      'Creating invitations requires trusted backend logic. It is pending deployment; direct Firestore invitation writes are disabled.',
+      'Business invitations will be implemented in the next module.',
     );
   }
 
@@ -116,13 +196,13 @@ class BusinessService {
     required String email,
   }) async {
     throw UnsupportedError(
-      'Accepting invitations requires trusted backend logic that verifies the authenticated email and invitation expiry. It is pending backend deployment.',
+      'Invitation acceptance will be implemented in the next module.',
     );
   }
 
   Future<void> revokeInvitation({required String invitationId}) async {
     throw UnsupportedError(
-      'Revoking invitations requires trusted backend membership checks. It is pending backend deployment.',
+      'Invitation management will be implemented in the next module.',
     );
   }
 }
