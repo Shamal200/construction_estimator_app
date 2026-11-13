@@ -166,6 +166,25 @@ test('authenticated users can access their own permitted profile only', async ()
   }));
 });
 
+test('new users can create a valid profile at their own UID', async () => {
+  const uid = 'new-registration-user';
+  const db = authenticatedDb(uid);
+  const profile = userProfile(uid);
+
+  await assertSucceeds(setDoc(doc(db, `users/${uid}`), profile));
+  const createdProfile = await getDoc(doc(db, `users/${uid}`));
+  assert.equal(createdProfile.data().uid, uid);
+  assert.equal(createdProfile.data().email, `${uid}@example.test`);
+});
+
+test('users cannot create a profile for another UID', async () => {
+  const db = authenticatedDb('user-outsider');
+  await assertFails(setDoc(
+    doc(db, 'users/victim-user'),
+    userProfile('victim-user'),
+  ));
+});
+
 test('business members are isolated to businesses where they have membership', async () => {
   const memberDb = authenticatedDb(roles.employee.uid);
   await assertSucceeds(getDoc(doc(memberDb, 'businesses/business-a')));

@@ -33,6 +33,16 @@ class AuthException implements Exception {
         return 'Authentication failed. Please check your details and try again.';
     }
   }
+
+  static String firebaseMessage(FirebaseException exception) {
+    if (exception.code == 'permission-denied') {
+      return 'Your account may have been created, but profile setup was denied. '
+          'Sign in again to retry setup.';
+    }
+
+    return 'Your account may have been created, but your profile could not be '
+        'saved. Check your connection and sign in again to retry setup.';
+  }
 }
 
 class AuthService {
@@ -66,6 +76,11 @@ class AuthService {
     required String email,
     required String password,
   }) async {
+    final normalizedFullName = fullName.trim();
+    if (normalizedFullName.isEmpty || normalizedFullName.length > 120) {
+      throw const AuthException('Full name must be between 1 and 120 characters.');
+    }
+
     try {
       final credential = await _auth.createUserWithEmailAndPassword(
         email: email.trim(),
@@ -77,25 +92,25 @@ class AuthService {
         throw const AuthException('Account creation failed. Please try again.');
       }
 
-      await user.updateDisplayName(fullName.trim());
-
       final profile = AppUser(
         uid: user.uid,
-        fullName: fullName.trim(),
-        email: email.trim(),
+        fullName: normalizedFullName,
+        email: user.email ?? email.trim(),
         createdAt: DateTime.now(),
       );
 
       await _firestore
           .collection('users')
           .doc(user.uid)
-          .set(profile.toMap(), SetOptions(merge: true));
+          .set(profile.toMap());
 
       await user.sendEmailVerification();
 
       return credential;
     } on FirebaseAuthException catch (error) {
       throw AuthException(AuthException.friendlyMessage(error));
+    } on FirebaseException catch (error) {
+      throw AuthException(AuthException.firebaseMessage(error));
     }
   }
 
@@ -140,6 +155,10 @@ class AuthService {
         .collection('users')
         .doc(user.uid)
         .set(user.toMap(), SetOptions(merge: true));
+  }
+
+  Future<void> createUserProfile(AppUser user) async {
+    await _firestore.collection('users').doc(user.uid).set(user.toMap());
   }
 
   Future<void> setActiveBusiness(String businessId) async {

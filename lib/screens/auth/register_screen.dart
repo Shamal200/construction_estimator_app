@@ -66,9 +66,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         decoration: const InputDecoration(
                           labelText: 'Full name',
                         ),
+                        maxLength: 120,
                         validator: (value) =>
                             (value == null || value.trim().isEmpty)
                             ? 'Full name is required'
+                            : (value.trim().length > 120)
+                            ? 'Full name must be 120 characters or fewer'
                             : null,
                       ),
                       const SizedBox(height: 16),

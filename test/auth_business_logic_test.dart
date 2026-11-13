@@ -2,9 +2,19 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:construction_estimator_app/models/app_user.dart';
 import 'package:construction_estimator_app/models/business.dart';
 import 'package:construction_estimator_app/models/business_membership.dart';
+import 'package:construction_estimator_app/services/auth_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('Firestore permission errors receive an actionable message', () {
+    final message = AuthException.firebaseMessage(
+      FirebaseException(plugin: 'cloud_firestore', code: 'permission-denied'),
+    );
+
+    expect(message, contains('profile setup was denied'));
+    expect(message, contains('Sign in again'));
+  });
+
   group('business permissions', () {
     test('owner can manage all business membership operations', () {
       final membership = BusinessMembership(

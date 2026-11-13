@@ -60,7 +60,7 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> initialize() async {
     _user = _auth.currentUser;
-    await _refreshSession();
+    await _refreshSession(createMissingProfile: true);
   }
 
   Future<void> _handleAuthStateChange(User? user) async {
@@ -78,7 +78,7 @@ class AuthProvider extends ChangeNotifier {
     await _refreshSession();
   }
 
-  Future<void> _refreshSession() async {
+  Future<void> _refreshSession({bool createMissingProfile = false}) async {
     if (_user == null) {
       _profile = null;
       _businesses = const <Business>[];
@@ -94,14 +94,14 @@ class AuthProvider extends ChangeNotifier {
 
     try {
       _profile = await _auth.fetchUserProfile(_user!.uid);
-      if (_profile == null) {
+      if (_profile == null && createMissingProfile) {
         final fallback = AppUser(
           uid: _user!.uid,
           fullName: _user!.displayName ?? 'User',
           email: _user!.email ?? '',
           createdAt: DateTime.now(),
         );
-        await _auth.updateUserProfile(fallback);
+        await _auth.createUserProfile(fallback);
         _profile = fallback;
       }
 
@@ -116,7 +116,9 @@ class AuthProvider extends ChangeNotifier {
         _memberships = const <BusinessMembership>[];
       }
     } on Exception catch (error) {
-      _errorMessage = error.toString();
+      _errorMessage = error is FirebaseException
+          ? AuthException.firebaseMessage(error)
+          : error.toString();
       if (kDebugMode) {
         print(error);
       }
@@ -133,7 +135,8 @@ class AuthProvider extends ChangeNotifier {
 
     try {
       await _auth.signInWithEmailAndPassword(email: email, password: password);
-      await _refreshSession();
+      _user = _auth.currentUser;
+      await _refreshSession(createMissingProfile: true);
     } on AuthException catch (error) {
       _errorMessage = error.message;
     } finally {
@@ -157,6 +160,7 @@ class AuthProvider extends ChangeNotifier {
         email: email,
         password: password,
       );
+      _user = _auth.currentUser;
       await _refreshSession();
     } on AuthException catch (error) {
       _errorMessage = error.message;
