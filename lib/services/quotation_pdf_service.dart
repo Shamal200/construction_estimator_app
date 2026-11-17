@@ -10,7 +10,7 @@ import '../models/business.dart';
 import '../models/quotation.dart';
 
 class QuotationPdfService {
-  static const String defaultTemplateId = 'corporate_blue';
+  static const String defaultTemplateId = 'standard_blue';
 
   static const List<Map<String, String>> templates = [
     {'id': 'minimal', 'name': 'Minimal', 'category': 'free'},
@@ -45,7 +45,7 @@ class QuotationPdfService {
   }) async {
     final selectedId = _paletteValues.containsKey(templateId)
         ? templateId
-        : defaultTemplateId;
+        : 'standard_blue';
 
     final values = _paletteValues[selectedId]!;
     final primary = PdfColor.fromInt(values[0]);

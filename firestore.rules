@@ -286,7 +286,44 @@ service cloud.firestore {
       allow create: if signedIn()
         && validNewBusiness(businessId);
 
-      allow update, delete: if false;
+      
+allow update: if canManageBusiness(businessId)
+  && resource.data.ownerId == request.auth.uid
+  && request.resource.data.diff(resource.data).affectedKeys()
+      .hasOnly([
+        'logoBase64',
+        'defaultQuotationTemplate',
+        'bankName',
+        'bankAccountName',
+        'bankAccountNumber',
+        'bankBranch',
+        'bankBranchCode',
+        'paymentInstructions',
+        'updatedAt'
+      ])
+  && request.resource.data.logoBase64 is string
+  && request.resource.data.logoBase64.size() <= 700000
+  && request.resource.data.defaultQuotationTemplate in [
+    'minimal',
+    'standard_blue',
+    'modern_green',
+    'navy_gold',
+    'professional_grey',
+    'elegant_teal',
+    'modern_orange',
+    'dark_premium',
+    'construction',
+    'professional_red'
+  ]
+  && request.resource.data.bankName is string
+  && request.resource.data.bankAccountName is string
+  && request.resource.data.bankAccountNumber is string
+  && request.resource.data.bankBranch is string
+  && request.resource.data.bankBranchCode is string
+  && request.resource.data.paymentInstructions is string
+  && request.resource.data.updatedAt == request.time;
+
+allow delete: if false;
 
       match /members/{userId} {
         allow read: if signedIn()
