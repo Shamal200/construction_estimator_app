@@ -1,3 +1,4 @@
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -49,7 +50,9 @@ class BusinessService {
     return businesses.whereType<Business>().toList();
   }
 
-  Future<List<BusinessMembership>> loadMembershipsForUser(String userId) async {
+  Future<List<BusinessMembership>> loadMembershipsForUser(
+    String userId,
+  ) async {
     final user = await _firestore.collection('users').doc(userId).get();
 
     final businessIds = List<String>.from(
@@ -68,7 +71,9 @@ class BusinessService {
 
       if (doc.exists) {
         memberships.add(
-          BusinessMembership.fromMap(doc.data() ?? const <String, dynamic>{}),
+          BusinessMembership.fromMap(
+            doc.data() ?? const <String, dynamic>{},
+          ),
         );
       }
     }
@@ -177,6 +182,62 @@ class BusinessService {
     await batch.commit();
 
     return business;
+  }
+
+  // Saves quotation branding and bank details for a business.
+  Future<void> updateBusinessBranding({
+    required String businessId,
+    required String logoBase64,
+    required String defaultQuotationTemplate,
+    required String bankName,
+    required String bankAccountName,
+    required String bankAccountNumber,
+    required String bankBranch,
+    required String bankBranchCode,
+    required String paymentInstructions,
+  }) async {
+    final user = _auth.currentUser;
+
+    if (user == null) {
+      throw const FormatException(
+        'You must be signed in to update business settings.',
+      );
+    }
+
+    if (businessId.trim().isEmpty) {
+      throw const FormatException('Business ID is missing.');
+    }
+
+    final businessRef = _firestore
+        .collection('businesses')
+        .doc(businessId);
+
+    final businessDoc = await businessRef.get();
+
+    if (!businessDoc.exists) {
+      throw const FormatException('Business could not be found.');
+    }
+
+    final businessData =
+        businessDoc.data() ?? const <String, dynamic>{};
+
+    if (businessData['ownerId'] != user.uid) {
+      throw const FormatException(
+        'Only the business owner can update these settings.',
+      );
+    }
+
+    await businessRef.update({
+      'logoBase64': logoBase64,
+      'defaultQuotationTemplate': defaultQuotationTemplate,
+      'bankName': bankName.trim(),
+      'bankAccountName': bankAccountName.trim(),
+      'bankAccountNumber': bankAccountNumber.trim(),
+      'bankBranch': bankBranch.trim(),
+      'bankBranchCode': bankBranchCode.trim(),
+      'paymentInstructions': paymentInstructions.trim(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
   }
 
   Future<BusinessInvitation> createInvitation({

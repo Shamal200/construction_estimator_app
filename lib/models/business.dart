@@ -1,3 +1,4 @@
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Business {
@@ -15,6 +16,18 @@ class Business {
     this.businessRegistrationNumber = '',
     this.taxRegistrationNumber = '',
     this.status = 'active',
+
+    // Company branding
+    this.logoBase64 = '',
+    this.defaultQuotationTemplate = 'corporate_blue',
+
+    // Company bank details
+    this.bankName = '',
+    this.bankAccountName = '',
+    this.bankAccountNumber = '',
+    this.bankBranch = '',
+    this.bankBranchCode = '',
+    this.paymentInstructions = '',
   });
 
   final String id;
@@ -30,6 +43,18 @@ class Business {
   final DateTime createdAt;
   final String ownerId;
   final String status;
+
+  // Company branding
+  final String logoBase64;
+  final String defaultQuotationTemplate;
+
+  // Company bank details
+  final String bankName;
+  final String bankAccountName;
+  final String bankAccountNumber;
+  final String bankBranch;
+  final String bankBranchCode;
+  final String paymentInstructions;
 
   bool get isValid {
     return name.trim().isNotEmpty &&
@@ -56,6 +81,18 @@ class Business {
       'createdAt': Timestamp.fromDate(createdAt),
       'ownerId': ownerId,
       'status': status,
+
+      // Company branding
+      'logoBase64': logoBase64,
+      'defaultQuotationTemplate': defaultQuotationTemplate,
+
+      // Company bank details
+      'bankName': bankName,
+      'bankAccountName': bankAccountName,
+      'bankAccountNumber': bankAccountNumber,
+      'bankBranch': bankBranch,
+      'bankBranchCode': bankBranchCode,
+      'paymentInstructions': paymentInstructions,
     };
   }
 
@@ -63,6 +100,7 @@ class Business {
     final createdValue = map['createdAt'];
 
     final DateTime createdAt;
+
     if (createdValue is Timestamp) {
       createdAt = createdValue.toDate();
     } else if (createdValue is String) {
@@ -80,12 +118,29 @@ class Business {
       website: map['website'] as String? ?? '',
       businessRegistrationNumber:
           map['businessRegistrationNumber'] as String? ?? '',
-      taxRegistrationNumber: map['taxRegistrationNumber'] as String? ?? '',
+      taxRegistrationNumber:
+          map['taxRegistrationNumber'] as String? ?? '',
       currency: map['currency'] as String? ?? '',
-      defaultTaxRate: (map['defaultTaxRate'] as num?)?.toDouble() ?? 0,
+      defaultTaxRate:
+          (map['defaultTaxRate'] as num?)?.toDouble() ?? 0,
       createdAt: createdAt,
       ownerId: map['ownerId'] as String? ?? '',
       status: map['status'] as String? ?? 'active',
+
+      // Company branding
+      logoBase64: map['logoBase64'] as String? ?? '',
+      defaultQuotationTemplate:
+          map['defaultQuotationTemplate'] as String? ??
+              'corporate_blue',
+
+      // Company bank details
+      bankName: map['bankName'] as String? ?? '',
+      bankAccountName: map['bankAccountName'] as String? ?? '',
+      bankAccountNumber: map['bankAccountNumber'] as String? ?? '',
+      bankBranch: map['bankBranch'] as String? ?? '',
+      bankBranchCode: map['bankBranchCode'] as String? ?? '',
+      paymentInstructions:
+          map['paymentInstructions'] as String? ?? '',
     );
   }
 }
