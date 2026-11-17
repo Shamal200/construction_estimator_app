@@ -46,7 +46,7 @@ class InvoicesScreen extends StatelessWidget {
             content: SizedBox(
               width: 350,
               child: DropdownButtonFormField<String>(
-                value: selectedTemplate,
+                initialValue: selectedTemplate,
                 isExpanded: true,
                 decoration: const InputDecoration(
                   labelText: 'PDF template',
@@ -117,9 +117,7 @@ class InvoicesScreen extends StatelessWidget {
 
       final customer = Customer.fromMap(customerSnapshot.data()!);
 
-      final pdfService = InvoicePdfService();
-
-      final pdfBytes = await pdfService.build(
+      final pdfBytes = await InvoicePdfService().build(
         business: business,
         customer: customer,
         invoice: invoice,
@@ -145,10 +143,184 @@ class InvoicesScreen extends StatelessWidget {
     }
   }
 
+  Future<double?> _enterPartialPayment(
+    BuildContext context,
+    Invoice invoice,
+  ) async {
+    final controller = TextEditingController(
+      text: invoice.amountPaid > 0
+          ? invoice.amountPaid.toStringAsFixed(2)
+          : '',
+    );
+
+    final result = await showDialog<double>(
+      context: context,
+      builder: (dialogContext) {
+        String? errorText;
+
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Record partial payment'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Invoice total: ${CurrencyFormatter.format(
+                    invoice.total,
+                    currency: invoice.currency,
+                  )}'),
+                  const SizedBox(height: 6),
+                  Text('Already paid: ${CurrencyFormatter.format(
+                    invoice.amountPaid,
+                    currency: invoice.currency,
+                  )}'),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: controller,
+                    autofocus: true,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: 'Total amount received',
+                      prefixText: '${invoice.currency} ',
+                      border: const OutlineInputBorder(),
+                      errorText: errorText,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Enter the total amount received so far, '
+                    'including any previous payments.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey,
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final amount = double.tryParse(
+                      controller.text.trim().replaceAll(',', ''),
+                    );
+
+                    if (amount == null || amount <= 0) {
+                      setDialogState(() {
+                        errorText = 'Enter a valid payment amount.';
+                      });
+                      return;
+                    }
+
+                    if (amount >= invoice.total) {
+                      setDialogState(() {
+                        errorText =
+                            'For full payment, select Paid instead.';
+                      });
+                      return;
+                    }
+
+                    Navigator.pop(dialogContext, amount);
+                  },
+                  child: const Text('Save payment'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    controller.dispose();
+    return result;
+  }
+
+  Future<void> _changePaymentStatus(
+    BuildContext context,
+    InvoiceService service,
+    String businessId,
+    Invoice invoice,
+    InvoiceStatus? newStatus,
+  ) async {
+    if (newStatus == null || newStatus == invoice.status) return;
+
+    double amountPaid;
+
+    switch (newStatus) {
+      case InvoiceStatus.unpaid:
+        amountPaid = 0;
+        break;
+
+      case InvoiceStatus.paid:
+        amountPaid = invoice.total;
+        break;
+
+      case InvoiceStatus.partiallyPaid:
+        final enteredAmount = await _enterPartialPayment(
+          context,
+          invoice,
+        );
+
+        if (enteredAmount == null || !context.mounted) return;
+
+        amountPaid = enteredAmount;
+        break;
+    }
+
+    try {
+      await service.updatePayment(
+        businessId: businessId,
+        invoiceId: invoice.id,
+        amountPaid: amountPaid,
+      );
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text('Invoice payment status updated.'),
+            ),
+          );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text('Unable to update payment: $e'),
+            ),
+          );
+      }
+    }
+  }
+
+  Future<Customer?> _getCustomer(
+    String businessId,
+    String customerId,
+  ) async {
+    final snapshot = await FirebaseFirestore.instance
+        .collection('businesses')
+        .doc(businessId)
+        .collection('customers')
+        .doc(customerId)
+        .get();
+
+    if (!snapshot.exists) return null;
+
+    return Customer.fromMap(snapshot.data()!);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final business =
-        context.watch<AuthProvider>().activeBusiness;
+    final business = context.watch<AuthProvider>().activeBusiness;
 
     if (business == null) {
       return const Center(
@@ -172,7 +344,7 @@ class InvoicesScreen extends StatelessWidget {
           ),
           const SizedBox(height: 7),
           const Text(
-            'View invoices, generate PDFs, track payments and manage outstanding balances.',
+            'Manage customer invoices and record payments.',
           ),
           const SizedBox(height: 18),
           Expanded(
@@ -226,83 +398,199 @@ class InvoicesScreen extends StatelessWidget {
 
                 return ListView.separated(
                   itemCount: invoices.length,
-                  separatorBuilder: (context, index) =>
+                  separatorBuilder: (_, index) =>
                       const SizedBox(height: 10),
                   itemBuilder: (context, index) {
                     final invoice = invoices[index];
 
                     return Card(
-                      child: ListTile(
-                        contentPadding:
-                            const EdgeInsets.symmetric(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
                           horizontal: 16,
-                          vertical: 10,
+                          vertical: 14,
                         ),
-                        leading: const CircleAvatar(
-                          backgroundColor: Color(0xFFEAF0F8),
-                          child: Icon(
-                            Icons.receipt_long_outlined,
-                            color: Color(0xFF29486F),
-                          ),
-                        ),
-                        title: Text(
-                          invoice.invoiceNumber,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        subtitle: Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
-                            children: [
-                              Text(invoice.projectName),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Total: ${CurrencyFormatter.format(
-                                  invoice.total,
-                                  currency: invoice.currency,
-                                )}',
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final compact = constraints.maxWidth < 650;
+
+                            final customerInfo = FutureBuilder<Customer?>(
+                              future: _getCustomer(
+                                business.id,
+                                invoice.customerId,
                               ),
-                              Text(
-                                'Balance: ${CurrencyFormatter.format(
-                                  invoice.balance,
-                                  currency: invoice.currency,
-                                )}',
-                              ),
-                              const SizedBox(height: 6),
-                              _StatusLabel(
-                                status: invoice.status,
-                              ),
-                            ],
-                          ),
-                        ),
-                        trailing: Wrap(
-                          spacing: 0,
-                          children: [
-                            IconButton(
-                              tooltip: 'Generate invoice PDF',
+                              builder: (context, customerSnapshot) {
+                                final customer = customerSnapshot.data;
+
+                                return Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      invoice.invoiceNumber,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 5),
+                                    if (customerSnapshot.connectionState ==
+                                        ConnectionState.waiting)
+                                      const Text(
+                                        'Loading customer...',
+                                        style: TextStyle(
+                                          color: Colors.grey,
+                                          fontSize: 12,
+                                        ),
+                                      )
+                                    else ...[
+                                      Text(
+                                        customer?.fullName ??
+                                            'Customer not found',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      if ((customer?.companyName ?? '')
+                                          .isNotEmpty)
+                                        Text(
+                                          customer!.companyName,
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.grey,
+                                          ),
+                                        ),
+                                      Text(
+                                        customer?.address ?? '',
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey,
+                                        ),
+                                      ),
+                                    ],
+                                    const SizedBox(height: 7),
+                                    Text(
+                                      'Total: ${CurrencyFormatter.format(
+                                        invoice.total,
+                                        currency: invoice.currency,
+                                      )}',
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                    Text(
+                                      'Balance: ${CurrencyFormatter.format(
+                                        invoice.balance,
+                                        currency: invoice.currency,
+                                      )}',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
+                            );
+
+                            final paymentSelector = Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'PAYMENT STATUS',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.grey,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 5),
+                                DropdownButton<InvoiceStatus>(
+                                  value: invoice.status,
+                                  isExpanded: true,
+                                  underline: const SizedBox(),
+                                  items: const [
+                                    DropdownMenuItem(
+                                      value: InvoiceStatus.unpaid,
+                                      child: Text('Unpaid'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: InvoiceStatus.partiallyPaid,
+                                      child: Text('Partially Paid'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: InvoiceStatus.paid,
+                                      child: Text('Paid'),
+                                    ),
+                                  ],
+                                  onChanged: (value) =>
+                                      _changePaymentStatus(
+                                    context,
+                                    service,
+                                    business.id,
+                                    invoice,
+                                    value,
+                                  ),
+                                ),
+                                if (invoice.status ==
+                                    InvoiceStatus.partiallyPaid)
+                                  Text(
+                                    'Paid: ${CurrencyFormatter.format(
+                                      invoice.amountPaid,
+                                      currency: invoice.currency,
+                                    )}',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                              ],
+                            );
+
+                            final pdfButton = OutlinedButton.icon(
                               onPressed: () => _generatePdf(
                                 context,
                                 business,
                                 invoice,
                               ),
-                              icon: const Icon(
-                                Icons.picture_as_pdf_outlined,
-                              ),
-                            ),
-                            IconButton(
-                              tooltip: 'View invoice details',
-                              onPressed: () => _showInvoiceDetails(
-                                context,
-                                invoice,
-                              ),
-                              icon: const Icon(
-                                Icons.chevron_right,
-                              ),
-                            ),
-                          ],
+                              icon: const Icon(Icons.picture_as_pdf_outlined),
+                              label: const Text('Generate PDF'),
+                            );
+
+                            if (compact) {
+                              return Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                children: [
+                                  customerInfo,
+                                  const Divider(height: 22),
+                                  paymentSelector,
+                                  const SizedBox(height: 8),
+                                  Align(
+                                    alignment: Alignment.centerRight,
+                                    child: pdfButton,
+                                  ),
+                                ],
+                              );
+                            }
+
+                            return Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Expanded(
+                                  flex: 5,
+                                  child: customerInfo,
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  flex: 3,
+                                  child: paymentSelector,
+                                ),
+                                const SizedBox(width: 12),
+                                pdfButton,
+                              ],
+                            );
+                          },
                         ),
                       ),
                     );
@@ -312,205 +600,6 @@ class InvoicesScreen extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  void _showInvoiceDetails(
-    BuildContext context,
-    Invoice invoice,
-  ) {
-    showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(invoice.invoiceNumber),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _detail('Project', invoice.projectName),
-              _detail('Invoice status', invoice.status.name),
-              _detail(
-                'Issue date',
-                _formatDate(invoice.issueDate),
-              ),
-              _detail(
-                'Due date',
-                _formatDate(invoice.dueDate),
-              ),
-              const Divider(height: 24),
-              const Text(
-                'Invoice items',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              ...invoice.items.map(
-                (item) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item.name,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      Text(
-                        '${item.quantity} ${item.unit} × '
-                        '${CurrencyFormatter.format(
-                          item.unitRate,
-                          currency: invoice.currency,
-                        )}',
-                      ),
-                      Text(
-                        CurrencyFormatter.format(
-                          item.total,
-                          currency: invoice.currency,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const Divider(height: 24),
-              _detail(
-                'Subtotal',
-                CurrencyFormatter.format(
-                  invoice.subtotal,
-                  currency: invoice.currency,
-                ),
-              ),
-              _detail(
-                'Discount',
-                CurrencyFormatter.format(
-                  invoice.discount,
-                  currency: invoice.currency,
-                ),
-              ),
-              _detail(
-                'Tax',
-                CurrencyFormatter.format(
-                  invoice.tax,
-                  currency: invoice.currency,
-                ),
-              ),
-              _detail(
-                'Total',
-                CurrencyFormatter.format(
-                  invoice.total,
-                  currency: invoice.currency,
-                ),
-              ),
-              _detail(
-                'Amount paid',
-                CurrencyFormatter.format(
-                  invoice.amountPaid,
-                  currency: invoice.currency,
-                ),
-              ),
-              _detail(
-                'Outstanding balance',
-                CurrencyFormatter.format(
-                  invoice.balance,
-                  currency: invoice.currency,
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _detail(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: const TextStyle(
-                color: Colors.grey,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Flexible(
-            child: Text(
-              value,
-              textAlign: TextAlign.end,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _formatDate(DateTime date) {
-    return '${date.day.toString().padLeft(2, '0')}/'
-        '${date.month.toString().padLeft(2, '0')}/'
-        '${date.year}';
-  }
-}
-
-class _StatusLabel extends StatelessWidget {
-  final InvoiceStatus status;
-
-  const _StatusLabel({required this.status});
-
-  @override
-  Widget build(BuildContext context) {
-    final label = switch (status) {
-      InvoiceStatus.draft => 'Draft',
-      InvoiceStatus.sent => 'Sent / Unpaid',
-      InvoiceStatus.partiallyPaid => 'Partially Paid',
-      InvoiceStatus.paid => 'Paid',
-      InvoiceStatus.overdue => 'Overdue',
-    };
-
-    final color = switch (status) {
-      InvoiceStatus.draft => Colors.blueGrey,
-      InvoiceStatus.sent => Colors.orange,
-      InvoiceStatus.partiallyPaid => Colors.deepOrange,
-      InvoiceStatus.paid => Colors.green,
-      InvoiceStatus.overdue => Colors.red,
-    };
-
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 10,
-          vertical: 5,
-        ),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: color,
-            fontWeight: FontWeight.w600,
-            fontSize: 12,
-          ),
-        ),
       ),
     );
   }

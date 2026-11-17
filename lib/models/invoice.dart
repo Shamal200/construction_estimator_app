@@ -1,10 +1,8 @@
 
 enum InvoiceStatus {
-  draft,
-  sent,
+  unpaid,
   partiallyPaid,
   paid,
-  overdue,
 }
 
 class InvoiceItem {
@@ -26,17 +24,15 @@ class InvoiceItem {
   final double unitRate;
   final double total;
 
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'name': name,
-      'description': description,
-      'quantity': quantity,
-      'unit': unit,
-      'unitRate': unitRate,
-      'total': total,
-    };
-  }
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'name': name,
+        'description': description,
+        'quantity': quantity,
+        'unit': unit,
+        'unitRate': unitRate,
+        'total': total,
+      };
 
   factory InvoiceItem.fromMap(Map<String, dynamic> map) {
     return InvoiceItem(
@@ -78,14 +74,11 @@ class Invoice {
   final String customerId;
   final String projectId;
   final String projectName;
-
   final String quotationId;
   final String quotationNumber;
-
   final DateTime issueDate;
   final DateTime dueDate;
   final List<InvoiceItem> items;
-
   final double subtotal;
   final double discount;
   final double tax;
@@ -120,6 +113,27 @@ class Invoice {
 
   factory Invoice.fromMap(Map<String, dynamic> map) {
     final rawItems = map['items'] as List? ?? [];
+    final total = (map['total'] as num?)?.toDouble() ?? 0;
+    final amountPaid =
+        (map['amountPaid'] as num?)?.toDouble() ?? 0;
+
+    // Convert older Draft/Sent/Overdue records into the
+    // three payment statuses used by the new invoice screen.
+    final savedStatus = map['status'] as String? ?? '';
+
+    final InvoiceStatus parsedStatus;
+
+    if (amountPaid >= total && total > 0) {
+      parsedStatus = InvoiceStatus.paid;
+    } else if (amountPaid > 0) {
+      parsedStatus = InvoiceStatus.partiallyPaid;
+    } else if (savedStatus == 'paid') {
+      parsedStatus = InvoiceStatus.paid;
+    } else if (savedStatus == 'partiallyPaid') {
+      parsedStatus = InvoiceStatus.partiallyPaid;
+    } else {
+      parsedStatus = InvoiceStatus.unpaid;
+    }
 
     return Invoice(
       id: map['id'] as String? ?? '',
@@ -148,13 +162,11 @@ class Invoice {
       subtotal: (map['subtotal'] as num?)?.toDouble() ?? 0,
       discount: (map['discount'] as num?)?.toDouble() ?? 0,
       tax: (map['tax'] as num?)?.toDouble() ?? 0,
-      total: (map['total'] as num?)?.toDouble() ?? 0,
-      amountPaid: (map['amountPaid'] as num?)?.toDouble() ?? 0,
-      balance: (map['balance'] as num?)?.toDouble() ?? 0,
-      status: InvoiceStatus.values.firstWhere(
-        (status) => status.name == map['status'],
-        orElse: () => InvoiceStatus.draft,
-      ),
+      total: total,
+      amountPaid: amountPaid,
+      balance: (map['balance'] as num?)?.toDouble() ??
+          (total - amountPaid),
+      status: parsedStatus,
       currency: map['currency'] as String? ?? 'FJD',
     );
   }

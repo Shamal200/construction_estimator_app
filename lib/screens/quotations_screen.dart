@@ -77,9 +77,9 @@ class _QuotationsScreenState extends State<QuotationsScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Convert to invoice?'),
         content: Text(
-          'Convert ${quote.quotationNumber} into a Draft invoice?\n\n'
+          'Convert ${quote.quotationNumber} into a invoice?\n\n'
           'The invoice will retain the quotation selling prices '
-          'and totals. You can issue it when the work is completed.',
+          'and totals. You can record payments against it from the Invoices section.',
         ),
         actions: [
           TextButton(
@@ -109,7 +109,7 @@ class _QuotationsScreenState extends State<QuotationsScreen> {
 
       if (mounted) {
         _message(
-          'Draft invoice ${invoice.invoiceNumber} created successfully.',
+          'Invoice ${invoice.invoiceNumber} created successfully.',
         );
       }
     } on FirebaseException catch (e) {
