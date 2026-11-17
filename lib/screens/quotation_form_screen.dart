@@ -59,15 +59,40 @@ class _QuotationFormScreenState extends State<QuotationFormScreen> {
   double _n(String s) =>
       double.tryParse(s.trim().replaceAll(',', '')) ?? 0;
 
+  bool get _usesItemMarkup =>
+      !_isEditing || (_existing?.itemMarkupEnabled ?? false);
+
+  double _sellingUnitRate(_LineDraft line) =>
+      _n(line.rate.text) * (1 + _n(line.markup.text) / 100);
+
+  double _sellingTotal(_LineDraft line) =>
+      _sellingUnitRate(line) * _n(line.qty.text);
+
   double get _direct => _lines.fold(
-        0,
-        (v, l) => v + _n(l.qty.text) * _n(l.rate.text),
+        0.0,
+        (sum, line) =>
+            sum + _n(line.qty.text) * _n(line.rate.text),
       );
 
-  double get _markupAmount => _direct * _n(_markup.text) / 100;
+  double get _markupAmount => _usesItemMarkup
+      ? _lines.fold(
+          0.0,
+          (sum, line) =>
+              sum +
+              (_n(line.qty.text) *
+                  _n(line.rate.text) *
+                  _n(line.markup.text) /
+                  100),
+        )
+      : _direct * _n(_markup.text) / 100;
 
-  double get _subtotal =>
-      _direct + _markupAmount - _n(_discount.text);
+  double get _subtotal => _usesItemMarkup
+      ? _lines.fold(
+              0.0,
+              (sum, line) => sum + _sellingTotal(line),
+            ) -
+            _n(_discount.text)
+      : _direct + _markupAmount - _n(_discount.text);
 
   double get _taxAmount => _subtotal * _n(_tax.text) / 100;
 
@@ -226,6 +251,7 @@ class _QuotationFormScreenState extends State<QuotationFormScreen> {
         quantity: _n(line.qty.text),
         materialCost: _n(line.rate.text),
         labourCost: 0,
+        markupPercent: _usesItemMarkup ? _n(line.markup.text) : 0,
       );
     }).toList();
 
@@ -247,12 +273,13 @@ class _QuotationFormScreenState extends State<QuotationFormScreen> {
       notes: _notes.text.trim(),
       termsAndConditions: _terms.text.trim(),
       items: items,
-      markupPercent: _n(_markup.text),
+      markupPercent: _usesItemMarkup ? 0 : _n(_markup.text),
       discount: _n(_discount.text),
       taxPercent: _n(_tax.text),
       status: existing?.status ?? 'Draft',
       currency: existing?.currency ??
           (business.currency.isEmpty ? 'FJD' : business.currency),
+      itemMarkupEnabled: _usesItemMarkup,
     );
 
     setState(() => _saving = true);
@@ -640,7 +667,7 @@ class _QuotationFormScreenState extends State<QuotationFormScreen> {
           const SizedBox(height: 8),
           LayoutBuilder(
             builder: (context, constraints) {
-              final fields = [
+              final fields = <Widget>[
                 _number(
                   line.qty,
                   'Quantity *',
@@ -652,9 +679,11 @@ class _QuotationFormScreenState extends State<QuotationFormScreen> {
                 ),
                 _number(
                   line.rate,
-                  'Unit rate *',
+                  _usesItemMarkup ? 'Unit cost *' : 'Unit rate *',
                   required: true,
                 ),
+                if (_usesItemMarkup)
+                  _number(line.markup, 'Markup %'),
               ];
 
               if (constraints.maxWidth < 550) {
@@ -684,10 +713,18 @@ class _QuotationFormScreenState extends State<QuotationFormScreen> {
               );
             },
           ),
+          if (_usesItemMarkup)
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                'Selling unit rate: ${_cash(_sellingUnitRate(line), currency)}',
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
           Align(
             alignment: Alignment.centerRight,
             child: Text(
-              'Line total: ${_cash(_n(line.qty.text) * _n(line.rate.text), currency)}',
+              'Line total: ${_cash(_usesItemMarkup ? _sellingTotal(line) : _n(line.qty.text) * _n(line.rate.text), currency)}',
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
@@ -805,8 +842,9 @@ class _QuotationFormScreenState extends State<QuotationFormScreen> {
                 children: [
                   LayoutBuilder(
                     builder: (context, constraints) {
-                      final fields = [
-                        _number(_markup, 'Markup %'),
+                      final fields = <Widget>[
+                        if (!_usesItemMarkup)
+                          _number(_markup, 'Overall markup %'),
                         _number(_discount, 'Discount amount'),
                         _number(_tax, 'Tax %'),
                         _number(
@@ -916,6 +954,7 @@ class _LineDraft {
     qty.text = item.quantity.toString();
     unit.text = item.unit;
     rate.text = item.unitRate.toString();
+    markup.text = item.markupPercent.toString();
   }
 
   String id = '';
@@ -925,6 +964,7 @@ class _LineDraft {
   final qty = TextEditingController(text: '1');
   final unit = TextEditingController(text: 'item');
   final rate = TextEditingController(text: '0');
+  final markup = TextEditingController(text: '0');
 
   void dispose() {
     name.dispose();
@@ -932,5 +972,6 @@ class _LineDraft {
     qty.dispose();
     unit.dispose();
     rate.dispose();
+    markup.dispose();
   }
 }

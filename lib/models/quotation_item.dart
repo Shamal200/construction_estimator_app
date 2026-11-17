@@ -18,25 +18,39 @@ class QuotationItem {
   final String description;
   final String unit;
 
+  // Internal business costs
   final double quantity;
   final double materialCost;
   final double labourCost;
+
+  // Private markup for this individual item
   final double markupPercent;
+
   final double discount;
   final double taxPercent;
 
+  // Actual cost before markup
   double get unitRate => materialCost + labourCost;
 
   double get directCost => unitRate * quantity;
 
+  // Private markup amount
   double get markupAmount =>
-      directCost * (markupPercent / 100);
+      directCost * markupPercent / 100;
+
+  // Customer-facing selling price per unit
+  double get sellingUnitRate =>
+      unitRate * (1 + markupPercent / 100);
+
+  // Customer-facing total for this item
+  double get sellingTotal =>
+      sellingUnitRate * quantity;
 
   double get subtotal =>
       directCost + markupAmount - discount;
 
   double get taxAmount =>
-      subtotal * (taxPercent / 100);
+      subtotal * taxPercent / 100;
 
   double get total => subtotal + taxAmount;
 

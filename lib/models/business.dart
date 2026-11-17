@@ -19,7 +19,7 @@ class Business {
 
     // Company branding
     this.logoBase64 = '',
-    this.defaultQuotationTemplate = 'corporate_blue',
+    this.defaultQuotationTemplate = 'standard_blue',
 
     // Company bank details
     this.bankName = '',
@@ -131,7 +131,7 @@ class Business {
       logoBase64: map['logoBase64'] as String? ?? '',
       defaultQuotationTemplate:
           map['defaultQuotationTemplate'] as String? ??
-              'corporate_blue',
+              'standard_blue',
 
       // Company bank details
       bankName: map['bankName'] as String? ?? '',

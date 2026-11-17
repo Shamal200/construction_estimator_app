@@ -1,3 +1,4 @@
+
 import 'quotation_item.dart';
 
 class Quotation {
@@ -24,6 +25,7 @@ class Quotation {
     required this.taxPercent,
     required this.status,
     this.currency = 'FJD',
+    this.itemMarkupEnabled = false,
   });
 
   final String id;
@@ -43,31 +45,47 @@ class Quotation {
   final String notes;
   final String termsAndConditions;
   final List<QuotationItem> items;
+
   final double markupPercent;
   final double discount;
   final double taxPercent;
   final String status;
   final String currency;
+  final bool itemMarkupEnabled;
 
   double get directCost {
-    return items.fold(0, (sum, item) => sum + item.directCost);
+    return items.fold(
+      0.0,
+      (sum, item) => sum + item.directCost,
+    );
   }
 
   double get markupAmount {
+    if (itemMarkupEnabled) {
+      return items.fold(
+        0.0,
+        (sum, item) => sum + item.markupAmount,
+      );
+    }
+
     return directCost * markupPercent / 100;
   }
 
   double get subtotal {
+    if (itemMarkupEnabled) {
+      return items.fold(
+            0.0,
+            (sum, item) => sum + item.sellingTotal,
+          ) -
+          discount;
+    }
+
     return directCost + markupAmount - discount;
   }
 
-  double get taxAmount {
-    return subtotal * taxPercent / 100;
-  }
+  double get taxAmount => subtotal * taxPercent / 100;
 
-  double get grandTotal {
-    return subtotal + taxAmount;
-  }
+  double get grandTotal => subtotal + taxAmount;
 
   Map<String, dynamic> toMap() {
     return {
@@ -93,6 +111,7 @@ class Quotation {
       'taxPercent': taxPercent,
       'status': status,
       'currency': currency,
+      'itemMarkupEnabled': itemMarkupEnabled,
       'directCost': directCost,
       'markupAmount': markupAmount,
       'subtotal': subtotal,
@@ -126,7 +145,8 @@ class Quotation {
           ) ??
           DateTime.now(),
       notes: map['notes'] as String? ?? '',
-      termsAndConditions: map['termsAndConditions'] as String? ?? '',
+      termsAndConditions:
+          map['termsAndConditions'] as String? ?? '',
       items: rawItems
           .whereType<Map>()
           .map(
@@ -141,6 +161,8 @@ class Quotation {
       taxPercent: (map['taxPercent'] as num? ?? 0).toDouble(),
       status: map['status'] as String? ?? 'Draft',
       currency: map['currency'] as String? ?? 'FJD',
+      itemMarkupEnabled:
+          map['itemMarkupEnabled'] as bool? ?? false,
     );
   }
 }

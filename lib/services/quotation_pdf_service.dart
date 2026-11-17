@@ -533,8 +533,12 @@ class QuotationPdfService {
                     item.quantity % 1 == 0 ? 0 : 2,
                   ),
                   item.unit,
-                  cash(item.unitRate),
-                  cash(item.directCost),
+                  cash(quote.itemMarkupEnabled
+                      ? item.sellingUnitRate
+                      : item.unitRate),
+                  cash(quote.itemMarkupEnabled
+                      ? item.sellingTotal
+                      : item.directCost),
                 ];
               }).toList(),
               headerCount: 1,
@@ -568,12 +572,16 @@ class QuotationPdfService {
                 width: 245,
                 child: pw.Column(
                   children: [
-                    totalRow('Direct cost', cash(quote.directCost)),
-                    if (quote.markupPercent > 0)
-                      totalRow(
-                        'Markup (${quote.markupPercent}%)',
-                        cash(quote.markupAmount),
-                      ),
+                    if (!quote.itemMarkupEnabled) ...[
+                      // Preserve the historical totals layout for quotations
+                      // created before item-by-item markup was introduced.
+                      totalRow('Direct cost', cash(quote.directCost)),
+                      if (quote.markupPercent > 0)
+                        totalRow(
+                          'Markup (${quote.markupPercent}%)',
+                          cash(quote.markupAmount),
+                        ),
+                    ],
                     if (quote.discount > 0)
                       totalRow('Discount', '- ${cash(quote.discount)}'),
                     totalRow('Subtotal', cash(quote.subtotal)),

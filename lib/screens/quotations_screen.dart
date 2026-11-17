@@ -1,3 +1,4 @@
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
@@ -48,6 +49,7 @@ class _QuotationsScreenState extends State<QuotationsScreen> {
         onLayout: (_) => _pdf.build(
           business: business,
           quote: quote,
+          templateId: business.defaultQuotationTemplate,
         ),
       );
     } catch (e) {
