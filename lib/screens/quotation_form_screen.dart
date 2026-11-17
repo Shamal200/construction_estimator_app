@@ -70,15 +70,15 @@ class _QuotationFormScreenState extends State<QuotationFormScreen> {
 
   double get _direct => _lines.fold(
         0.0,
-        (sum, line) =>
-            sum + _n(line.qty.text) * _n(line.rate.text),
+        (runningTotal, line) =>
+            runningTotal + _n(line.qty.text) * _n(line.rate.text),
       );
 
   double get _markupAmount => _usesItemMarkup
       ? _lines.fold(
           0.0,
-          (sum, line) =>
-              sum +
+          (runningTotal, line) =>
+              runningTotal +
               (_n(line.qty.text) *
                   _n(line.rate.text) *
                   _n(line.markup.text) /
@@ -89,7 +89,7 @@ class _QuotationFormScreenState extends State<QuotationFormScreen> {
   double get _subtotal => _usesItemMarkup
       ? _lines.fold(
               0.0,
-              (sum, line) => sum + _sellingTotal(line),
+              (runningTotal, line) => runningTotal + _sellingTotal(line),
             ) -
             _n(_discount.text)
       : _direct + _markupAmount - _n(_discount.text);
@@ -349,7 +349,7 @@ class _QuotationFormScreenState extends State<QuotationFormScreen> {
                         ?.copyWith(fontWeight: FontWeight.bold),
                   ),
                 ),
-                if (action != null) action,
+                ?action,
               ],
             ),
             const SizedBox(height: 13),

@@ -276,7 +276,7 @@ class _QuotationsScreenState extends State<QuotationsScreen> {
                   clipBehavior: Clip.antiAlias,
                   child: ListView.separated(
                     itemCount: quotes.length,
-                    separatorBuilder: (_, __) =>
+                    separatorBuilder: (_, _) =>
                         const Divider(height: 1),
                     itemBuilder: (context, index) {
                       final quote = quotes[index];
