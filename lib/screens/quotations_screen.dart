@@ -1,4 +1,3 @@
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
@@ -27,6 +26,17 @@ class _QuotationsScreenState extends State<QuotationsScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => const QuotationFormScreen(),
+      ),
+    );
+  }
+
+  Future<void> _edit(Quotation quote) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => QuotationFormScreen(
+          existingQuotation: quote,
+        ),
       ),
     );
   }
@@ -138,24 +148,24 @@ class _QuotationsScreenState extends State<QuotationsScreen> {
           Expanded(
             child: StreamBuilder<List<Quotation>>(
               stream: _service.watchQuotations(business.id),
-              builder: (context, snap) {
-                if (snap.connectionState ==
+              builder: (context, snapshot) {
+                if (snapshot.connectionState ==
                     ConnectionState.waiting) {
                   return const Center(
                     child: CircularProgressIndicator(),
                   );
                 }
 
-                if (snap.hasError) {
+                if (snapshot.hasError) {
                   return Center(
                     child: Text(
-                      'Unable to load quotations.\n${snap.error}',
+                      'Unable to load quotations.\n${snapshot.error}',
                       textAlign: TextAlign.center,
                     ),
                   );
                 }
 
-                final quotes = snap.data ?? [];
+                final quotes = snapshot.data ?? [];
 
                 if (quotes.isEmpty) {
                   return Center(
@@ -181,9 +191,7 @@ class _QuotationsScreenState extends State<QuotationsScreen> {
                         FilledButton.icon(
                           onPressed: _create,
                           icon: const Icon(Icons.add),
-                          label: const Text(
-                            'Create quotation',
-                          ),
+                          label: const Text('Create quotation'),
                         ),
                       ],
                     ),
@@ -197,7 +205,7 @@ class _QuotationsScreenState extends State<QuotationsScreen> {
                     separatorBuilder: (_, __) =>
                         const Divider(height: 1),
                     itemBuilder: (context, index) {
-                      final q = quotes[index];
+                      final quote = quotes[index];
 
                       return ListTile(
                         leading: const CircleAvatar(
@@ -208,24 +216,30 @@ class _QuotationsScreenState extends State<QuotationsScreen> {
                           ),
                         ),
                         title: Text(
-                          '${q.quotationNumber}  •  ${q.customerName}',
+                          '${quote.quotationNumber}  •  '
+                          '${quote.customerName}',
                           style: const TextStyle(
                             fontWeight: FontWeight.w700,
                           ),
                         ),
                         subtitle: Text(
-                          '${q.projectName}  •  ${q.status}  •  '
+                          '${quote.projectName}  •  ${quote.status}  •  '
                           '${CurrencyFormatter.format(
-                            q.grandTotal,
-                            currency: q.currency,
+                            quote.grandTotal,
+                            currency: quote.currency,
                           )}',
                         ),
                         trailing: Wrap(
                           spacing: 2,
                           children: [
                             IconButton(
+                              tooltip: 'Edit quotation',
+                              onPressed: () => _edit(quote),
+                              icon: const Icon(Icons.edit_outlined),
+                            ),
+                            IconButton(
                               tooltip: 'Generate PDF',
-                              onPressed: () => _print(business, q),
+                              onPressed: () => _print(business, quote),
                               icon: const Icon(
                                 Icons.picture_as_pdf_outlined,
                               ),
@@ -233,7 +247,7 @@ class _QuotationsScreenState extends State<QuotationsScreen> {
                             IconButton(
                               tooltip: 'Delete quotation',
                               onPressed: () => _delete(
-                                q,
+                                quote,
                                 business.id,
                               ),
                               icon: const Icon(

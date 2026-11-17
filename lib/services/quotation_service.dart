@@ -105,6 +105,19 @@ class QuotationService {
     return savedQuotation;
   }
 
+  Future<void> updateQuotation({
+    required String businessId,
+    required Quotation quotation,
+  }) async {
+    if (quotation.id.isEmpty) {
+      throw ArgumentError('Quotation ID cannot be empty.');
+    }
+
+    await _quotes(businessId)
+        .doc(quotation.id)
+        .update(quotation.toMap());
+  }
+
   Future<void> deleteQuotation({
     required String businessId,
     required String quotationId,

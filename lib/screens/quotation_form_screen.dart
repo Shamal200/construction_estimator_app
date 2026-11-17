@@ -1,4 +1,3 @@
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -12,14 +11,21 @@ import '../services/customer_service.dart';
 import '../services/quotation_service.dart';
 
 class QuotationFormScreen extends StatefulWidget {
-  const QuotationFormScreen({super.key});
+  const QuotationFormScreen({
+    super.key,
+    this.existingQuotation,
+  });
+
+  final Quotation? existingQuotation;
 
   @override
-  State<QuotationFormScreen> createState() => _QuotationFormScreenState();
+  State<QuotationFormScreen> createState() =>
+      _QuotationFormScreenState();
 }
 
 class _QuotationFormScreenState extends State<QuotationFormScreen> {
   final _form = GlobalKey<FormState>();
+
   final _customerSearch = TextEditingController();
   final _project = TextEditingController();
   final _site = TextEditingController();
@@ -39,11 +45,16 @@ class _QuotationFormScreenState extends State<QuotationFormScreen> {
 
   final _customers = CustomerService();
   final _quotes = QuotationService();
-  final List<_LineDraft> _lines = [_LineDraft()];
+
+  final List<_LineDraft> _lines = [];
 
   Customer? _customer;
   DateTime _date = DateTime.now();
   bool _saving = false;
+
+  bool get _isEditing => widget.existingQuotation != null;
+
+  Quotation? get _existing => widget.existingQuotation;
 
   double _n(String s) =>
       double.tryParse(s.trim().replaceAll(',', '')) ?? 0;
@@ -54,24 +65,64 @@ class _QuotationFormScreenState extends State<QuotationFormScreen> {
       );
 
   double get _markupAmount => _direct * _n(_markup.text) / 100;
-  double get _subtotal => _direct + _markupAmount - _n(_discount.text);
+
+  double get _subtotal =>
+      _direct + _markupAmount - _n(_discount.text);
+
   double get _taxAmount => _subtotal * _n(_tax.text) / 100;
+
   double get _total => _subtotal + _taxAmount;
 
   @override
   void initState() {
     super.initState();
-    _tax.text = (context
-                .read<AuthProvider>()
-                .activeBusiness
-                ?.defaultTaxRate ??
-            0)
-        .toStringAsFixed(2);
+
+    final existing = _existing;
+
+    if (existing != null) {
+      _loadExistingQuotation(existing);
+    } else {
+      _tax.text = (context
+                  .read<AuthProvider>()
+                  .activeBusiness
+                  ?.defaultTaxRate ??
+              0)
+          .toStringAsFixed(2);
+
+      _lines.add(_LineDraft());
+    }
+  }
+
+  void _loadExistingQuotation(Quotation quote) {
+    _customerSearch.text =
+        '${quote.customerNumber} - ${quote.customerName}';
+
+    _project.text = quote.projectName;
+    _site.text = quote.projectAddress;
+    _scope.text = quote.description;
+    _markup.text = quote.markupPercent.toString();
+    _discount.text = quote.discount.toString();
+    _tax.text = quote.taxPercent.toString();
+    _date = quote.issueDate;
+
+    _validity.text =
+        quote.validUntil.difference(quote.issueDate).inDays.toString();
+
+    _notes.text = quote.notes;
+    _terms.text = quote.termsAndConditions;
+
+    for (final item in quote.items) {
+      _lines.add(_LineDraft.fromItem(item));
+    }
+
+    if (_lines.isEmpty) {
+      _lines.add(_LineDraft());
+    }
   }
 
   @override
   void dispose() {
-    for (final c in [
+    for (final controller in [
       _customerSearch,
       _project,
       _site,
@@ -83,42 +134,42 @@ class _QuotationFormScreenState extends State<QuotationFormScreen> {
       _notes,
       _terms,
     ]) {
-      c.dispose();
+      controller.dispose();
     }
 
-    for (final l in _lines) {
-      l.dispose();
+    for (final line in _lines) {
+      line.dispose();
     }
 
     super.dispose();
   }
 
-  void _msg(String s) {
+  void _msg(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(s)),
+      SnackBar(content: Text(message)),
     );
   }
 
-  String _cash(double v, String currency) =>
-      '$currency ${v.toStringAsFixed(2)}';
+  String _cash(double value, String currency) =>
+      '$currency ${value.toStringAsFixed(2)}';
 
   Future<void> _pickDate() async {
-    final d = await showDatePicker(
+    final picked = await showDatePicker(
       context: context,
       initialDate: _date,
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
     );
 
-    if (d != null) {
-      setState(() => _date = d);
+    if (picked != null) {
+      setState(() => _date = picked);
     }
   }
 
   Future<void> _save() async {
     if (_saving || !_form.currentState!.validate()) return;
 
-    if (_customer == null) {
+    if (!_isEditing && _customer == null) {
       _msg('Select a customer from the search results.');
       return;
     }
@@ -130,35 +181,64 @@ class _QuotationFormScreenState extends State<QuotationFormScreen> {
       return;
     }
 
-    final customer = _customer!;
+    final existing = _existing;
+    final selectedCustomer = _customer;
+
+    final customerId =
+        selectedCustomer?.id ?? existing?.customerId ?? '';
+
+    final customerName =
+        selectedCustomer?.fullName ?? existing?.customerName ?? '';
+
+    final customerNumber =
+        selectedCustomer?.customerNumber ??
+            existing?.customerNumber ??
+            '';
+
+    final customerCompany =
+        selectedCustomer?.companyName ??
+            existing?.customerCompany ??
+            '';
+
+    final customerPhone =
+        selectedCustomer?.phoneNumber ??
+            existing?.customerPhone ??
+            '';
+
+    final customerEmail =
+        selectedCustomer?.email ?? existing?.customerEmail ?? '';
+
+    final customerAddress =
+        selectedCustomer?.address ??
+            existing?.customerAddress ??
+            '';
+
     final validity = int.tryParse(_validity.text) ?? 30;
 
-    final items = _lines
-        .map(
-          (l) => QuotationItem(
-            id: const Uuid().v4(),
-            name: l.name.text.trim(),
-            description: l.details.text.trim(),
-            unit: l.unit.text.trim().isEmpty
-                ? 'item'
-                : l.unit.text.trim(),
-            quantity: _n(l.qty.text),
-            materialCost: _n(l.rate.text),
-            labourCost: 0,
-          ),
-        )
-        .toList();
+    final items = _lines.map((line) {
+      return QuotationItem(
+        id: line.id.isEmpty ? const Uuid().v4() : line.id,
+        name: line.name.text.trim(),
+        description: line.details.text.trim(),
+        unit: line.unit.text.trim().isEmpty
+            ? 'item'
+            : line.unit.text.trim(),
+        quantity: _n(line.qty.text),
+        materialCost: _n(line.rate.text),
+        labourCost: 0,
+      );
+    }).toList();
 
     final draft = Quotation(
-      id: '',
-      quotationNumber: '',
-      customerId: customer.id,
-      customerName: customer.fullName,
-      customerNumber: customer.customerNumber,
-      customerCompany: customer.companyName,
-      customerPhone: customer.phoneNumber,
-      customerEmail: customer.email,
-      customerAddress: customer.address,
+      id: existing?.id ?? '',
+      quotationNumber: existing?.quotationNumber ?? '',
+      customerId: customerId,
+      customerName: customerName,
+      customerNumber: customerNumber,
+      customerCompany: customerCompany,
+      customerPhone: customerPhone,
+      customerEmail: customerEmail,
+      customerAddress: customerAddress,
       projectName: _project.text.trim(),
       projectAddress: _site.text.trim(),
       description: _scope.text.trim(),
@@ -170,30 +250,42 @@ class _QuotationFormScreenState extends State<QuotationFormScreen> {
       markupPercent: _n(_markup.text),
       discount: _n(_discount.text),
       taxPercent: _n(_tax.text),
-      status: 'Draft',
-      currency: business.currency.isEmpty
-          ? 'FJD'
-          : business.currency,
+      status: existing?.status ?? 'Draft',
+      currency: existing?.currency ??
+          (business.currency.isEmpty ? 'FJD' : business.currency),
     );
 
     setState(() => _saving = true);
 
     try {
-      final saved = await _quotes.createQuotation(
-        businessId: business.id,
-        quotation: draft,
-      );
+      if (_isEditing) {
+        await _quotes.updateQuotation(
+          businessId: business.id,
+          quotation: draft,
+        );
 
-      if (!mounted) return;
+        if (!mounted) return;
 
-      _msg('${saved.quotationNumber} saved successfully.');
-      Navigator.pop(context);
+        _msg('${draft.quotationNumber} updated successfully.');
+      } else {
+        final saved = await _quotes.createQuotation(
+          businessId: business.id,
+          quotation: draft,
+        );
+
+        if (!mounted) return;
+
+        _msg('${saved.quotationNumber} saved successfully.');
+      }
+
+      if (mounted) {
+        Navigator.pop(context);
+      }
     } on FirebaseException catch (e) {
       if (mounted) {
         _msg(
           e.code == 'permission-denied'
-              ? 'Permission denied. The quotation counter rules '
-                  'must be added before saving quotations.'
+              ? 'Permission denied. Please check your quotation Firestore rules.'
               : e.message ?? 'Unable to save quotation.',
         );
       }
@@ -242,39 +334,40 @@ class _QuotationFormScreenState extends State<QuotationFormScreen> {
   }
 
   Widget _number(
-    TextEditingController c,
+    TextEditingController controller,
     String label, {
     bool required = false,
     bool whole = false,
   }) {
     return TextFormField(
-      controller: c,
+      controller: controller,
       keyboardType: const TextInputType.numberWithOptions(
         decimal: true,
       ),
       onChanged: (_) => setState(() {}),
       decoration: InputDecoration(labelText: label),
-      validator: (v) {
-        if (required && (v == null || v.trim().isEmpty)) {
+      validator: (value) {
+        if (required &&
+            (value == null || value.trim().isEmpty)) {
           return 'Required';
         }
 
-        if (v != null &&
-            v.trim().isNotEmpty &&
-            double.tryParse(v.trim()) == null) {
+        if (value != null &&
+            value.trim().isNotEmpty &&
+            double.tryParse(value.trim()) == null) {
           return 'Enter a number';
         }
 
         if (whole &&
-            v != null &&
-            v.trim().isNotEmpty &&
-            int.tryParse(v.trim()) == null) {
+            value != null &&
+            value.trim().isNotEmpty &&
+            int.tryParse(value.trim()) == null) {
           return 'Enter whole days';
         }
 
-        if (v != null &&
-            v.trim().isNotEmpty &&
-            _n(v) < 0) {
+        if (value != null &&
+            value.trim().isNotEmpty &&
+            _n(value) < 0) {
           return 'Cannot be negative';
         }
 
@@ -301,13 +394,13 @@ class _QuotationFormScreenState extends State<QuotationFormScreen> {
       child: Column(
         children: [
           ...rows.map(
-            (r) => Padding(
+            (row) => Padding(
               padding: const EdgeInsets.symmetric(vertical: 3),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(r.$1),
-                  Text(_cash(r.$2, currency)),
+                  Text(row.$1),
+                  Text(_cash(row.$2, currency)),
                 ],
               ),
             ),
@@ -335,6 +428,274 @@ class _QuotationFormScreenState extends State<QuotationFormScreen> {
     );
   }
 
+  Widget _customerDetails(String businessId) {
+    if (_isEditing) {
+      final quote = _existing!;
+
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEAF0F8),
+          borderRadius: BorderRadius.circular(9),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${quote.customerNumber}  ${quote.customerName}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            if (quote.customerCompany.isNotEmpty)
+              Text(quote.customerCompany),
+            if (quote.customerPhone.isNotEmpty)
+              Text(quote.customerPhone),
+            if (quote.customerEmail.isNotEmpty)
+              Text(quote.customerEmail),
+            if (quote.customerAddress.isNotEmpty)
+              Text(quote.customerAddress),
+            const SizedBox(height: 8),
+            const Text(
+              'The customer details on this existing quotation are retained.',
+              style: TextStyle(fontSize: 12),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return StreamBuilder<List<Customer>>(
+      stream: _customers.watchCustomers(businessId),
+      builder: (context, snapshot) {
+        final list = snapshot.data ?? [];
+        final query = _customerSearch.text.trim().toLowerCase();
+
+        final matches = query.isEmpty
+            ? <Customer>[]
+            : list
+                .where(
+                  (customer) =>
+                      customer.customerNumber
+                          .toLowerCase()
+                          .contains(query) ||
+                      customer.fullName.toLowerCase().contains(query) ||
+                      customer.companyName.toLowerCase().contains(query),
+                )
+                .take(8)
+                .toList();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _customerSearch,
+              decoration: InputDecoration(
+                labelText: 'Search customer by number or name',
+                hintText: 'Example: 001',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: IconButton(
+                  onPressed: () {
+                    setState(() {
+                      _customer = null;
+                      _customerSearch.clear();
+                    });
+                  },
+                  icon: const Icon(Icons.close),
+                ),
+              ),
+              onChanged: (_) {
+                setState(() => _customer = null);
+              },
+            ),
+            if (matches.isNotEmpty && _customer == null)
+              Container(
+                constraints: const BoxConstraints(maxHeight: 190),
+                margin: const EdgeInsets.only(top: 5),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: Theme.of(context).dividerColor,
+                  ),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: ListView(
+                  shrinkWrap: true,
+                  children: matches.map((customer) {
+                    return ListTile(
+                      dense: true,
+                      title: Text(
+                        '${customer.customerNumber}  ${customer.fullName}',
+                      ),
+                      subtitle: Text(
+                        [
+                          customer.companyName,
+                          customer.phoneNumber,
+                        ].where((value) => value.isNotEmpty).join(' • '),
+                      ),
+                      onTap: () {
+                        setState(() {
+                          _customer = customer;
+                          _customerSearch.text =
+                              '${customer.customerNumber} - '
+                              '${customer.fullName}';
+
+                          if (_site.text.isEmpty) {
+                            _site.text = customer.address;
+                          }
+                        });
+                      },
+                    );
+                  }).toList(),
+                ),
+              ),
+            if (snapshot.connectionState == ConnectionState.waiting)
+              const LinearProgressIndicator(),
+            if (snapshot.hasError)
+              const Text('Unable to load customers.'),
+            if (_customer != null)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(top: 10),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEAF0F8),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${_customer!.customerNumber}  '
+                      '${_customer!.fullName}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    if (_customer!.companyName.isNotEmpty)
+                      Text(_customer!.companyName),
+                    if (_customer!.phoneNumber.isNotEmpty)
+                      Text(_customer!.phoneNumber),
+                    if (_customer!.email.isNotEmpty)
+                      Text(_customer!.email),
+                    if (_customer!.address.isNotEmpty)
+                      Text(_customer!.address),
+                  ],
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _lineItem(_LineDraft line, int index, String currency) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: Theme.of(context).dividerColor,
+        ),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Item ${index + 1}',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              IconButton(
+                onPressed: _lines.length == 1
+                    ? null
+                    : () {
+                        setState(() {
+                          final removed = _lines.removeAt(index);
+                          removed.dispose();
+                        });
+                      },
+                icon: const Icon(Icons.delete_outline),
+              ),
+            ],
+          ),
+          TextFormField(
+            controller: line.name,
+            decoration: const InputDecoration(
+              labelText: 'Description / item name *',
+            ),
+            validator: (value) =>
+                value == null || value.trim().isEmpty
+                    ? 'Enter item description'
+                    : null,
+          ),
+          const SizedBox(height: 8),
+          TextFormField(
+            controller: line.details,
+            decoration: const InputDecoration(
+              labelText: 'Additional details',
+            ),
+          ),
+          const SizedBox(height: 8),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final fields = [
+                _number(
+                  line.qty,
+                  'Quantity *',
+                  required: true,
+                ),
+                TextFormField(
+                  controller: line.unit,
+                  decoration: const InputDecoration(labelText: 'Unit'),
+                ),
+                _number(
+                  line.rate,
+                  'Unit rate *',
+                  required: true,
+                ),
+              ];
+
+              if (constraints.maxWidth < 550) {
+                return Column(
+                  children: fields
+                      .map(
+                        (field) => Padding(
+                          padding: const EdgeInsets.only(bottom: 7),
+                          child: field,
+                        ),
+                      )
+                      .toList(),
+                );
+              }
+
+              return Row(
+                children: fields
+                    .map(
+                      (field) => Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 7),
+                          child: field,
+                        ),
+                      ),
+                    )
+                    .toList(),
+              );
+            },
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              'Line total: ${_cash(_n(line.qty.text) * _n(line.rate.text), currency)}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final business = context.watch<AuthProvider>().activeBusiness;
@@ -347,21 +708,26 @@ class _QuotationFormScreenState extends State<QuotationFormScreen> {
       );
     }
 
-    final currency =
-        business.currency.isEmpty ? 'FJD' : business.currency;
+    final currency = _isEditing
+        ? (_existing!.currency.isEmpty ? 'FJD' : _existing!.currency)
+        : (business.currency.isEmpty ? 'FJD' : business.currency);
+
+    final actionLabel = _isEditing ? 'Update quotation' : 'Save quotation';
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Create quotation'),
+        title: Text(
+          _isEditing
+              ? 'Edit quotation ${_existing!.quotationNumber}'
+              : 'Create quotation',
+        ),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12),
             child: FilledButton.icon(
               onPressed: _saving ? null : _save,
               icon: const Icon(Icons.save_outlined),
-              label: Text(
-                _saving ? 'Saving...' : 'Save quotation',
-              ),
+              label: Text(_saving ? 'Saving...' : actionLabel),
             ),
           ),
         ],
@@ -373,135 +739,7 @@ class _QuotationFormScreenState extends State<QuotationFormScreen> {
           children: [
             _card(
               'Customer details',
-              StreamBuilder<List<Customer>>(
-                stream: _customers.watchCustomers(business.id),
-                builder: (context, snap) {
-                  final list = snap.data ?? [];
-                  final q = _customerSearch.text.trim().toLowerCase();
-
-                  final matches = q.isEmpty
-                      ? <Customer>[]
-                      : list
-                          .where(
-                            (c) =>
-                                c.customerNumber
-                                    .toLowerCase()
-                                    .contains(q) ||
-                                c.fullName.toLowerCase().contains(q) ||
-                                c.companyName.toLowerCase().contains(q),
-                          )
-                          .take(8)
-                          .toList();
-
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      TextField(
-                        controller: _customerSearch,
-                        decoration: InputDecoration(
-                          labelText:
-                              'Search customer by number or name',
-                          hintText: 'Example: 001',
-                          prefixIcon: const Icon(Icons.search),
-                          suffixIcon: IconButton(
-                            onPressed: () {
-                              setState(() {
-                                _customer = null;
-                                _customerSearch.clear();
-                              });
-                            },
-                            icon: const Icon(Icons.close),
-                          ),
-                        ),
-                        onChanged: (_) {
-                          setState(() => _customer = null);
-                        },
-                      ),
-                      if (matches.isNotEmpty && _customer == null)
-                        Container(
-                          constraints:
-                              const BoxConstraints(maxHeight: 190),
-                          margin: const EdgeInsets.only(top: 5),
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                              color: Theme.of(context).dividerColor,
-                            ),
-                            borderRadius: BorderRadius.circular(9),
-                          ),
-                          child: ListView(
-                            shrinkWrap: true,
-                            children: matches
-                                .map(
-                                  (c) => ListTile(
-                                    dense: true,
-                                    title: Text(
-                                      '${c.customerNumber}  ${c.fullName}',
-                                    ),
-                                    subtitle: Text(
-                                      [
-                                        c.companyName,
-                                        c.phoneNumber,
-                                      ]
-                                          .where((e) => e.isNotEmpty)
-                                          .join(' • '),
-                                    ),
-                                    onTap: () {
-                                      setState(() {
-                                        _customer = c;
-                                        _customerSearch.text =
-                                            '${c.customerNumber} - '
-                                            '${c.fullName}';
-
-                                        if (_site.text.isEmpty) {
-                                          _site.text = c.address;
-                                        }
-                                      });
-                                    },
-                                  ),
-                                )
-                                .toList(),
-                          ),
-                        ),
-                      if (snap.connectionState ==
-                          ConnectionState.waiting)
-                        const LinearProgressIndicator(),
-                      if (snap.hasError)
-                        const Text('Unable to load customers.'),
-                      if (_customer != null)
-                        Container(
-                          width: double.infinity,
-                          margin: const EdgeInsets.only(top: 10),
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFEAF0F8),
-                            borderRadius: BorderRadius.circular(9),
-                          ),
-                          child: Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '${_customer!.customerNumber}  '
-                                '${_customer!.fullName}',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              if (_customer!.companyName.isNotEmpty)
-                                Text(_customer!.companyName),
-                              if (_customer!.phoneNumber.isNotEmpty)
-                                Text(_customer!.phoneNumber),
-                              if (_customer!.email.isNotEmpty)
-                                Text(_customer!.email),
-                              if (_customer!.address.isNotEmpty)
-                                Text(_customer!.address),
-                            ],
-                          ),
-                        ),
-                    ],
-                  );
-                },
-              ),
+              _customerDetails(business.id),
             ),
             _card(
               'Project information',
@@ -512,8 +750,8 @@ class _QuotationFormScreenState extends State<QuotationFormScreen> {
                     decoration: const InputDecoration(
                       labelText: 'Project name *',
                     ),
-                    validator: (v) =>
-                        v == null || v.trim().isEmpty
+                    validator: (value) =>
+                        value == null || value.trim().isEmpty
                             ? 'Enter project name'
                             : null,
                   ),
@@ -540,129 +778,14 @@ class _QuotationFormScreenState extends State<QuotationFormScreen> {
               'Line items',
               Column(
                 children: [
-                  ...List.generate(_lines.length, (i) {
-                    final l = _lines[i];
-
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: Theme.of(context).dividerColor,
-                        ),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Column(
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  'Item ${i + 1}',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                              IconButton(
-                                onPressed: _lines.length == 1
-                                    ? null
-                                    : () {
-                                        setState(() {
-                                          final old =
-                                              _lines.removeAt(i);
-                                          old.dispose();
-                                        });
-                                      },
-                                icon: const Icon(Icons.delete_outline),
-                              ),
-                            ],
-                          ),
-                          TextFormField(
-                            controller: l.name,
-                            decoration: const InputDecoration(
-                              labelText: 'Description / item name *',
-                            ),
-                            validator: (v) =>
-                                v == null || v.trim().isEmpty
-                                    ? 'Enter item description'
-                                    : null,
-                          ),
-                          const SizedBox(height: 8),
-                          TextFormField(
-                            controller: l.details,
-                            decoration: const InputDecoration(
-                              labelText: 'Additional details',
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          LayoutBuilder(
-                            builder: (context, c) {
-                              final children = [
-                                _number(
-                                  l.qty,
-                                  'Quantity *',
-                                  required: true,
-                                ),
-                                TextFormField(
-                                  controller: l.unit,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Unit',
-                                  ),
-                                ),
-                                _number(
-                                  l.rate,
-                                  'Unit rate *',
-                                  required: true,
-                                ),
-                              ];
-
-                              if (c.maxWidth < 550) {
-                                return Column(
-                                  children: children
-                                      .map(
-                                        (w) => Padding(
-                                          padding:
-                                              const EdgeInsets.only(
-                                            bottom: 7,
-                                          ),
-                                          child: w,
-                                        ),
-                                      )
-                                      .toList(),
-                                );
-                              }
-
-                              return Row(
-                                children: children
-                                    .map(
-                                      (w) => Expanded(
-                                        child: Padding(
-                                          padding:
-                                              const EdgeInsets.only(
-                                            right: 7,
-                                          ),
-                                          child: w,
-                                        ),
-                                      ),
-                                    )
-                                    .toList(),
-                              );
-                            },
-                          ),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: Text(
-                              'Line total: ${_cash(_n(l.qty.text) * _n(l.rate.text), currency)}',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
+                  ...List.generate(
+                    _lines.length,
+                    (index) => _lineItem(
+                      _lines[index],
+                      index,
+                      currency,
+                    ),
+                  ),
                   Align(
                     alignment: Alignment.centerLeft,
                     child: OutlinedButton.icon(
@@ -681,7 +804,7 @@ class _QuotationFormScreenState extends State<QuotationFormScreen> {
               Column(
                 children: [
                   LayoutBuilder(
-                    builder: (context, c) {
+                    builder: (context, constraints) {
                       final fields = [
                         _number(_markup, 'Markup %'),
                         _number(_discount, 'Discount amount'),
@@ -694,14 +817,14 @@ class _QuotationFormScreenState extends State<QuotationFormScreen> {
                         ),
                       ];
 
-                      if (c.maxWidth < 600) {
+                      if (constraints.maxWidth < 600) {
                         return Column(
                           children: fields
                               .map(
-                                (w) => Padding(
+                                (field) => Padding(
                                   padding:
                                       const EdgeInsets.only(bottom: 8),
-                                  child: w,
+                                  child: field,
                                 ),
                               )
                               .toList(),
@@ -711,11 +834,11 @@ class _QuotationFormScreenState extends State<QuotationFormScreen> {
                       return Row(
                         children: fields
                             .map(
-                              (w) => Expanded(
+                              (field) => Expanded(
                                 child: Padding(
                                   padding:
                                       const EdgeInsets.only(right: 7),
-                                  child: w,
+                                  child: field,
                                 ),
                               ),
                             )
@@ -773,9 +896,7 @@ class _QuotationFormScreenState extends State<QuotationFormScreen> {
               child: FilledButton.icon(
                 onPressed: _saving ? null : _save,
                 icon: const Icon(Icons.save_outlined),
-                label: Text(
-                  _saving ? 'Saving...' : 'Save quotation',
-                ),
+                label: Text(_saving ? 'Saving...' : actionLabel),
               ),
             ),
           ],
@@ -786,6 +907,19 @@ class _QuotationFormScreenState extends State<QuotationFormScreen> {
 }
 
 class _LineDraft {
+  _LineDraft();
+
+  _LineDraft.fromItem(QuotationItem item) {
+    id = item.id;
+    name.text = item.name;
+    details.text = item.description;
+    qty.text = item.quantity.toString();
+    unit.text = item.unit;
+    rate.text = item.unitRate.toString();
+  }
+
+  String id = '';
+
   final name = TextEditingController();
   final details = TextEditingController();
   final qty = TextEditingController(text: '1');
