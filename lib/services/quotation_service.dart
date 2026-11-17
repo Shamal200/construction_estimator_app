@@ -1,3 +1,4 @@
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uuid/uuid.dart';
 
@@ -87,6 +88,9 @@ class QuotationService {
         taxPercent: quotation.taxPercent,
         status: quotation.status,
         currency: quotation.currency,
+
+        // Preserve individual item markup settings.
+        itemMarkupEnabled: quotation.itemMarkupEnabled,
       );
 
       transaction.set(
