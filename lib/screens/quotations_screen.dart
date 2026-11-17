@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../core/utils/currency_formatter.dart';
 import '../models/quotation.dart';
 import '../providers/auth_provider.dart';
+import '../services/invoice_service.dart';
 import '../services/quotation_pdf_service.dart';
 import '../services/quotation_service.dart';
 import 'quotation_form_screen.dart';
@@ -20,7 +21,10 @@ class QuotationsScreen extends StatefulWidget {
 
 class _QuotationsScreenState extends State<QuotationsScreen> {
   final _service = QuotationService();
+  final _invoiceService = InvoiceService();
   final _pdf = QuotationPdfService();
+
+  final Set<String> _convertingQuotationIds = {};
 
   Future<void> _create() async {
     await Navigator.push(
@@ -55,6 +59,74 @@ class _QuotationsScreenState extends State<QuotationsScreen> {
     } catch (e) {
       if (mounted) {
         _message('PDF generation failed: $e');
+      }
+    }
+  }
+
+  Future<void> _convertToInvoice(
+    Quotation quote,
+    String businessId,
+  ) async {
+    if (quote.invoiceId.isNotEmpty) {
+      _message('This quotation has already been converted.');
+      return;
+    }
+
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Convert to invoice?'),
+        content: Text(
+          'Convert ${quote.quotationNumber} into a Draft invoice?\n\n'
+          'The invoice will retain the quotation selling prices '
+          'and totals. You can issue it when the work is completed.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.receipt_long),
+            label: const Text('Convert'),
+          ),
+        ],
+      ),
+    );
+
+    if (yes != true || !mounted) return;
+
+    setState(() {
+      _convertingQuotationIds.add(quote.id);
+    });
+
+    try {
+      final invoice = await _invoiceService.convertQuotationToInvoice(
+        businessId: businessId,
+        quotationId: quote.id,
+      );
+
+      if (mounted) {
+        _message(
+          'Draft invoice ${invoice.invoiceNumber} created successfully.',
+        );
+      }
+    } on FirebaseException catch (e) {
+      if (mounted) {
+        _message(
+          e.message ?? 'Unable to convert quotation to invoice.',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        _message('Invoice conversion failed: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _convertingQuotationIds.remove(quote.id);
+        });
       }
     }
   }
@@ -208,6 +280,10 @@ class _QuotationsScreenState extends State<QuotationsScreen> {
                         const Divider(height: 1),
                     itemBuilder: (context, index) {
                       final quote = quotes[index];
+                      final isConverted =
+                          quote.invoiceId.isNotEmpty;
+                      final isConverting =
+                          _convertingQuotationIds.contains(quote.id);
 
                       return ListTile(
                         leading: const CircleAvatar(
@@ -229,11 +305,44 @@ class _QuotationsScreenState extends State<QuotationsScreen> {
                           '${CurrencyFormatter.format(
                             quote.grandTotal,
                             currency: quote.currency,
-                          )}',
+                          )}'
+                          '${isConverted ? '\nInvoice created' : ''}',
                         ),
+                        isThreeLine: isConverted,
                         trailing: Wrap(
                           spacing: 2,
                           children: [
+                            if (isConverting)
+                              const Padding(
+                                padding: EdgeInsets.all(12),
+                                child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                              )
+                            else if (isConverted)
+                              const IconButton(
+                                tooltip: 'Already converted to invoice',
+                                onPressed: null,
+                                icon: Icon(
+                                  Icons.check_circle,
+                                  color: Colors.green,
+                                ),
+                              )
+                            else
+                              IconButton(
+                                tooltip: 'Convert to invoice',
+                                onPressed: () => _convertToInvoice(
+                                  quote,
+                                  business.id,
+                                ),
+                                icon: const Icon(
+                                  Icons.receipt_long_outlined,
+                                ),
+                              ),
                             IconButton(
                               tooltip: 'Edit quotation',
                               onPressed: () => _edit(quote),

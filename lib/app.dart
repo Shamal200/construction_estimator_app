@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -12,6 +13,7 @@ import 'screens/business/business_selection_screen.dart';
 import 'screens/customers_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/estimates_screen.dart';
+import 'screens/invoices_screen.dart';
 import 'screens/materials_screen.dart';
 import 'screens/quotations_screen.dart';
 import 'screens/settings_screen.dart';
@@ -26,9 +28,15 @@ class ConstructionEstimatorApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => AppNavigationProvider()),
-        ChangeNotifierProvider(create: (_) => AuthProvider()..initialize()),
-        Provider(create: (_) => BusinessService()),
+        ChangeNotifierProvider(
+          create: (_) => AppNavigationProvider(),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => AuthProvider()..initialize(),
+        ),
+        Provider(
+          create: (_) => BusinessService(),
+        ),
       ],
       child: MaterialApp(
         title: AppConstants.appName,
@@ -36,8 +44,10 @@ class ConstructionEstimatorApp extends StatelessWidget {
         theme: AppTheme.light(),
         home: const AuthGate(),
         routes: {
-          '/business-onboarding': (_) => const BusinessOnboardingScreen(),
-          '/business-selection': (_) => const BusinessSelectionScreen(),
+          '/business-onboarding': (_) =>
+              const BusinessOnboardingScreen(),
+          '/business-selection': (_) =>
+              const BusinessSelectionScreen(),
         },
       ),
     );
@@ -82,10 +92,12 @@ class AppShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final navigation = context.watch<AppNavigationProvider>();
     final auth = context.watch<AuthProvider>();
+
     final screens = <Widget>[
       const DashboardScreen(),
       const CustomersScreen(),
       const QuotationsScreen(),
+      const InvoicesScreen(),
       const EstimatesScreen(),
       const MaterialsScreen(),
       const SettingsScreen(),
@@ -108,6 +120,11 @@ class AppShell extends StatelessWidget {
         label: 'Quotations',
       ),
       NavigationDestination(
+        icon: Icon(Icons.request_quote_outlined),
+        selectedIcon: Icon(Icons.request_quote),
+        label: 'Invoices',
+      ),
+      NavigationDestination(
         icon: Icon(Icons.calculate_outlined),
         selectedIcon: Icon(Icons.calculate),
         label: 'Estimates',
@@ -124,22 +141,26 @@ class AppShell extends StatelessWidget {
       ),
     ];
 
+    final selectedIndex = navigation.selectedIndex
+        .clamp(0, destinations.length - 1);
+
     final title =
         auth.activeBusiness?.name ??
-        destinations[navigation.selectedIndex].label;
+        destinations[selectedIndex].label;
 
     return ResponsiveScaffold(
       title: title,
-      selectedIndex: navigation.selectedIndex,
+      selectedIndex: selectedIndex,
       destinations: destinations,
       onDestinationSelected: navigation.setIndex,
-      body: screens[navigation.selectedIndex],
+      body: screens[selectedIndex],
       actions: [
         IconButton(
           onPressed: () {
             Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (_) => const BusinessSelectionScreen(),
+                builder: (_) =>
+                    const BusinessSelectionScreen(),
               ),
             );
           },

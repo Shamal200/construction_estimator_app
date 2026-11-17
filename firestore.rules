@@ -199,6 +199,14 @@ service cloud.firestore {
         && request.resource.data.nextQuotationNumber <= 2147483647;
     }
 
+    function validInvoiceCounter() {
+      return request.resource.data.keys().hasOnly(['nextInvoiceNumber'])
+        && request.resource.data.keys().hasAll(['nextInvoiceNumber'])
+        && request.resource.data.nextInvoiceNumber is int
+        && request.resource.data.nextInvoiceNumber >= 1
+        && request.resource.data.nextInvoiceNumber <= 2147483647;
+    }
+
     function validProject(documentId) {
       return validRecordId(documentId)
         && request.resource.data.name is string
@@ -286,44 +294,43 @@ service cloud.firestore {
       allow create: if signedIn()
         && validNewBusiness(businessId);
 
-      
-allow update: if canManageBusiness(businessId)
-  && resource.data.ownerId == request.auth.uid
-  && request.resource.data.diff(resource.data).affectedKeys()
-      .hasOnly([
-        'logoBase64',
-        'defaultQuotationTemplate',
-        'bankName',
-        'bankAccountName',
-        'bankAccountNumber',
-        'bankBranch',
-        'bankBranchCode',
-        'paymentInstructions',
-        'updatedAt'
-      ])
-  && request.resource.data.logoBase64 is string
-  && request.resource.data.logoBase64.size() <= 700000
-  && request.resource.data.defaultQuotationTemplate in [
-    'minimal',
-    'standard_blue',
-    'modern_green',
-    'navy_gold',
-    'professional_grey',
-    'elegant_teal',
-    'modern_orange',
-    'dark_premium',
-    'construction',
-    'professional_red'
-  ]
-  && request.resource.data.bankName is string
-  && request.resource.data.bankAccountName is string
-  && request.resource.data.bankAccountNumber is string
-  && request.resource.data.bankBranch is string
-  && request.resource.data.bankBranchCode is string
-  && request.resource.data.paymentInstructions is string
-  && request.resource.data.updatedAt == request.time;
+      allow update: if canManageBusiness(businessId)
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly([
+              'logoBase64',
+              'defaultQuotationTemplate',
+              'bankName',
+              'bankAccountName',
+              'bankAccountNumber',
+              'bankBranch',
+              'bankBranchCode',
+              'paymentInstructions',
+              'updatedAt'
+            ])
+        && request.resource.data.logoBase64 is string
+        && request.resource.data.logoBase64.size() <= 700000
+        && request.resource.data.defaultQuotationTemplate in [
+          'minimal',
+          'standard_blue',
+          'modern_green',
+          'navy_gold',
+          'professional_grey',
+          'elegant_teal',
+          'modern_orange',
+          'dark_premium',
+          'construction',
+          'professional_red'
+        ]
+        && request.resource.data.bankName is string
+        && request.resource.data.bankAccountName is string
+        && request.resource.data.bankAccountNumber is string
+        && request.resource.data.bankBranch is string
+        && request.resource.data.bankBranchCode is string
+        && request.resource.data.paymentInstructions is string
+        && request.resource.data.updatedAt == request.time;
 
-allow delete: if false;
+      allow delete: if false;
 
       match /members/{userId} {
         allow read: if signedIn()
@@ -355,6 +362,7 @@ allow delete: if false;
         allow read: if (
             settingId == 'customerCounter'
             || settingId == 'quotationCounter'
+            || settingId == 'invoiceCounter'
           )
           && isActiveMember(businessId);
 
@@ -375,6 +383,15 @@ allow delete: if false;
                 ['owner', 'admin', 'estimator']
               )
               && validQuotationCounter()
+            )
+            ||
+            (
+              settingId == 'invoiceCounter'
+              && hasRole(
+                businessId,
+                ['owner', 'admin', 'estimator']
+              )
+              && validInvoiceCounter()
             )
           );
 
@@ -399,6 +416,17 @@ allow delete: if false;
               && validQuotationCounter()
               && request.resource.data.nextQuotationNumber
                   > resource.data.nextQuotationNumber
+            )
+            ||
+            (
+              settingId == 'invoiceCounter'
+              && hasRole(
+                businessId,
+                ['owner', 'admin', 'estimator']
+              )
+              && validInvoiceCounter()
+              && request.resource.data.nextInvoiceNumber
+                  > resource.data.nextInvoiceNumber
             )
           );
 
@@ -432,7 +460,10 @@ allow delete: if false;
       match /invoices/{invoiceId} {
         allow read: if isActiveMember(businessId);
 
-        allow create, update: if hasRole(businessId, ['owner', 'admin'])
+        allow create, update: if hasRole(
+            businessId,
+            ['owner', 'admin', 'estimator']
+          )
           && validInvoice(invoiceId);
 
         allow delete: if hasRole(businessId, ['owner', 'admin']);

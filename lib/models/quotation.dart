@@ -26,6 +26,7 @@ class Quotation {
     required this.status,
     this.currency = 'FJD',
     this.itemMarkupEnabled = false,
+    this.invoiceId = '',
   });
 
   final String id;
@@ -53,10 +54,13 @@ class Quotation {
   final String currency;
   final bool itemMarkupEnabled;
 
+  // Invoice created from this quotation, if any.
+  final String invoiceId;
+
   double get directCost {
     return items.fold(
       0.0,
-      (sum, item) => sum + item.directCost,
+      (total, item) => total + item.directCost,
     );
   }
 
@@ -64,7 +68,7 @@ class Quotation {
     if (itemMarkupEnabled) {
       return items.fold(
         0.0,
-        (sum, item) => sum + item.markupAmount,
+        (total, item) => total + item.markupAmount,
       );
     }
 
@@ -75,7 +79,7 @@ class Quotation {
     if (itemMarkupEnabled) {
       return items.fold(
             0.0,
-            (sum, item) => sum + item.sellingTotal,
+            (total, item) => total + item.sellingTotal,
           ) -
           discount;
     }
@@ -112,6 +116,7 @@ class Quotation {
       'status': status,
       'currency': currency,
       'itemMarkupEnabled': itemMarkupEnabled,
+      'invoiceId': invoiceId,
       'directCost': directCost,
       'markupAmount': markupAmount,
       'subtotal': subtotal,
@@ -163,6 +168,7 @@ class Quotation {
       currency: map['currency'] as String? ?? 'FJD',
       itemMarkupEnabled:
           map['itemMarkupEnabled'] as bool? ?? false,
+      invoiceId: map['invoiceId'] as String? ?? '',
     );
   }
 }
