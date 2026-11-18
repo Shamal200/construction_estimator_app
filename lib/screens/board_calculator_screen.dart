@@ -23,6 +23,7 @@ class _BoardCalculatorScreenState extends State<BoardCalculatorScreen> {
   final _depth = TextEditingController(text: '560');
   final _shelves = TextEditingController(text: '1');
   final _quantity = TextEditingController(text: '1');
+  final _kerf = TextEditingController(text: '2');
 
   _CarcassType _type = _CarcassType.groundBase;
   String? _mainBoardId;
@@ -38,6 +39,7 @@ class _BoardCalculatorScreenState extends State<BoardCalculatorScreen> {
     _depth.dispose();
     _shelves.dispose();
     _quantity.dispose();
+    _kerf.dispose();
     super.dispose();
   }
 
@@ -218,6 +220,37 @@ class _BoardCalculatorScreenState extends State<BoardCalculatorScreen> {
           backBoard?.thicknessMm,
         );
 
+        final kerfMm = _number(_kerf, 2).clamp(0, 10).toDouble();
+        final mainParts = projectResult.parts
+            .where((part) => !part.isBack)
+            .toList();
+        final backParts = projectResult.parts
+            .where((part) => part.isBack)
+            .toList();
+
+        final mainPlan = projectResult.valid && _carcasses.isNotEmpty
+            ? _buildSheetPlan(
+                materialName: mainBoard.name,
+                parts: mainParts,
+                sheetLength: mainBoard.sheetLengthMm,
+                sheetWidth: mainBoard.sheetWidthMm,
+                sheetCost: mainBoard.cost,
+                kerf: kerfMm,
+              )
+            : null;
+        final backPlan = projectResult.valid &&
+                _carcasses.isNotEmpty &&
+                backBoard != null
+            ? _buildSheetPlan(
+                materialName: backBoard.name,
+                parts: backParts,
+                sheetLength: backBoard.sheetLengthMm,
+                sheetWidth: backBoard.sheetWidthMm,
+                sheetCost: backBoard.cost,
+                kerf: kerfMm,
+              )
+            : null;
+
         return LayoutBuilder(
           builder: (context, constraints) {
             final wide = constraints.maxWidth >= 900;
@@ -285,6 +318,9 @@ class _BoardCalculatorScreenState extends State<BoardCalculatorScreen> {
                     projectResult,
                     backBoard == null,
                   ),
+                  const SizedBox(height: 16),
+                  if (mainPlan != null)
+                    _purchasePlanCard(mainPlan, backPlan, kerfMm),
                   const SizedBox(height: 16),
                   _projectNotes(mainBoard, backBoard),
                 ],
@@ -411,6 +447,8 @@ class _BoardCalculatorScreenState extends State<BoardCalculatorScreen> {
               '1',
               unit: '',
             ),
+            const SizedBox(height: 10),
+            _field(_kerf, 'Saw kerf', '2', unit: 'mm'),
 
             if (_type == _CarcassType.tallPantry)
               CheckboxListTile(
@@ -533,13 +571,10 @@ class _BoardCalculatorScreenState extends State<BoardCalculatorScreen> {
               ),
 
             const Text(
-              'This stage combines all carcass components. Exact sheet '
-              'quantity and offcut nesting will be added after the '
-              'combined cutting list is tested.',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.black54,
-              ),
+              'Sheet estimates are calculated from the selected inventory '
+              'sheet dimensions. Confirm the cutting sequence and offcuts '
+              'with your joiner before purchasing material.',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
             ),
           ],
         ),
@@ -754,6 +789,253 @@ class _BoardCalculatorScreenState extends State<BoardCalculatorScreen> {
         ),
       );
 
+
+  Widget _purchasePlanCard(
+    _SheetPlan mainPlan,
+    _SheetPlan? backPlan,
+    double kerfMm,
+  ) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Board purchase estimate',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 6),
+            Text('Saw kerf allowance: ${_fmt(kerfMm)} mm'),
+            const SizedBox(height: 12),
+            _purchaseMaterialSection(mainPlan),
+            if (backPlan != null) ...[
+              const Divider(height: 28),
+              _purchaseMaterialSection(backPlan),
+            ],
+            const Divider(height: 24),
+            _combinedMaterialCostRow(mainPlan, backPlan),
+            const SizedBox(height: 12),
+            const Text(
+              'Important: this is a first-pass crosscut-first cutting '
+              'estimate, not an optimized nesting guarantee. Rotation is '
+              'allowed when a panel fits better. Check grain direction, '
+              'edge defects, trimming allowance and the actual machine '
+              'cutting order before cutting or purchasing.',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _combinedMaterialCostRow(
+    _SheetPlan mainPlan,
+    _SheetPlan? backPlan,
+  ) {
+    final mainCost = mainPlan.sheetCost == null
+        ? null
+        : mainPlan.sheetCost! * mainPlan.sheetCount;
+    final backCost = backPlan == null
+        ? 0.0
+        : backPlan.sheetCost == null
+            ? null
+            : backPlan.sheetCost! * backPlan.sheetCount;
+
+    final total = mainCost == null || backCost == null
+        ? null
+        : mainCost + backCost;
+
+    return Row(
+      children: [
+        const Expanded(
+          child: Text(
+            'TOTAL ESTIMATED MATERIAL COST',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          total == null ? 'Price unavailable' : '\$${total.toStringAsFixed(2)}',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+        ),
+      ],
+    );
+  }
+
+  Widget _purchaseMaterialSection(_SheetPlan plan) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(plan.materialName, style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 6),
+        if (plan.error != null)
+          Text(plan.error!, style: const TextStyle(color: Colors.red))
+        else ...[
+          _summaryRow('Sheet size', '${_fmt(plan.sheetLength)} × ${_fmt(plan.sheetWidth)} mm'),
+          _summaryRow('Sheets required', '${plan.sheetCount}'),
+          _summaryRow('Estimated material cost', plan.sheetCost == null
+              ? 'Not available'
+              : '\$${(plan.sheetCost! * plan.sheetCount).toStringAsFixed(2)}'),
+          if (plan.unfittedParts.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            const Text('Panels that do not fit a full sheet:',
+                style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600)),
+            ...plan.unfittedParts.map((p) => Text(
+              '${p.name}: ${_fmt(p.length)} × ${_fmt(p.width)} mm',
+              style: const TextStyle(color: Colors.red),
+            )),
+          ],
+          const SizedBox(height: 10),
+          const Text('Cutting sequence', style: TextStyle(fontWeight: FontWeight.w600)),
+          if (plan.cutSteps.isEmpty)
+            const Text('No panels to cut.')
+          else
+            ...plan.cutSteps.map((step) => Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(step, style: const TextStyle(fontSize: 12)),
+            )),
+          if (plan.offcuts.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            const Text('Reusable rectangular offcuts',
+                style: TextStyle(fontWeight: FontWeight.w600)),
+            ...plan.offcuts.map((offcut) => Text(
+              'Sheet ${offcut.sheetNumber}: ${_fmt(offcut.length)} × ${_fmt(offcut.width)} mm',
+              style: const TextStyle(fontSize: 12),
+            )),
+          ],
+        ],
+      ],
+    );
+  }
+
+  static _SheetPlan _buildSheetPlan({
+    required String materialName,
+    required List<_CutPart> parts,
+    required double sheetLength,
+    required double sheetWidth,
+    required double? sheetCost,
+    required double kerf,
+  }) {
+    if (!sheetLength.isFinite ||
+        !sheetWidth.isFinite ||
+        sheetLength <= 0 ||
+        sheetWidth <= 0) {
+      return _SheetPlan.invalid(materialName, 'Invalid sheet dimensions in Board Materials.');
+    }
+
+    final panels = <_Panel>[];
+    for (final part in parts) {
+      for (var i = 0; i < part.quantity; i++) {
+        panels.add(_Panel(part.name, part.length, part.width));
+      }
+    }
+    panels.sort((a, b) {
+      final byLength = b.length.compareTo(a.length);
+      return byLength != 0 ? byLength : b.width.compareTo(a.width);
+    });
+
+    final sheets = <_StockSheet>[];
+    final steps = <String>[];
+    final unfitted = <_Panel>[];
+
+    for (final panel in panels) {
+      final canFitFresh = (panel.length <= sheetLength && panel.width <= sheetWidth) ||
+          (panel.width <= sheetLength && panel.length <= sheetWidth);
+      if (!canFitFresh) {
+        unfitted.add(panel);
+        continue;
+      }
+
+      _CutChoice? best;
+      for (var sheetIndex = 0; sheetIndex < sheets.length; sheetIndex++) {
+        final sheet = sheets[sheetIndex];
+        for (var rectIndex = 0; rectIndex < sheet.rectangles.length; rectIndex++) {
+          final rect = sheet.rectangles[rectIndex];
+          for (final rotated in [false, true]) {
+            final cutL = rotated ? panel.width : panel.length;
+            final cutW = rotated ? panel.length : panel.width;
+            if (cutL > rect.length || cutW > rect.width) continue;
+            final waste = rect.length * rect.width - cutL * cutW;
+            final choice = _CutChoice(sheetIndex, rectIndex, rotated, cutL, cutW, waste);
+            if (best == null || choice.waste < best.waste) best = choice;
+          }
+        }
+      }
+
+      if (best == null) {
+        final sheet = _StockSheet();
+        sheet.rectangles.add(_StockRect(sheetLength, sheetWidth));
+        sheets.add(sheet);
+        final sheetIndex = sheets.length - 1;
+        final rect = sheet.rectangles.first;
+        _CutChoice? freshChoice;
+        for (final rotated in [false, true]) {
+          final cutL = rotated ? panel.width : panel.length;
+          final cutW = rotated ? panel.length : panel.width;
+          if (cutL <= rect.length && cutW <= rect.width) {
+            final choice = _CutChoice(sheetIndex, 0, rotated, cutL, cutW,
+                rect.length * rect.width - cutL * cutW);
+            if (freshChoice == null || choice.waste < freshChoice.waste) {
+              freshChoice = choice;
+            }
+          }
+        }
+        best = freshChoice;
+      }
+
+      if (best == null) {
+        unfitted.add(panel);
+        continue;
+      }
+
+      final sheet = sheets[best.sheetIndex];
+      final rect = sheet.rectangles.removeAt(best.rectIndex);
+      final remainingLength = rect.length - best.cutLength - kerf;
+      final remainingWidth = rect.width - best.cutWidth - kerf;
+
+      // Crosscut-first split: retain the long remainder, then the side remainder.
+      if (remainingLength > 0 && rect.width > 0) {
+        sheet.rectangles.add(_StockRect(remainingLength, rect.width));
+      }
+      if (remainingWidth > 0 && best.cutLength > 0) {
+        sheet.rectangles.add(_StockRect(best.cutLength, remainingWidth));
+      }
+
+      final orientation = best.rotated ? ' (rotated)' : '';
+      steps.add(
+        'Sheet ${best.sheetIndex + 1}: cut ${panel.name} '
+        '${_fmtStatic(best.cutLength)} × ${_fmtStatic(best.cutWidth)} mm$orientation',
+      );
+    }
+
+    final offcuts = <_Offcut>[];
+    for (var i = 0; i < sheets.length; i++) {
+      for (final rect in sheets[i].rectangles) {
+        if (rect.length >= 50 && rect.width >= 50) {
+          offcuts.add(_Offcut(i + 1, rect.length, rect.width));
+        }
+      }
+    }
+
+    return _SheetPlan(
+      materialName: materialName,
+      sheetLength: sheetLength,
+      sheetWidth: sheetWidth,
+      sheetCount: sheets.length,
+      sheetCost: sheetCost,
+      cutSteps: steps,
+      offcuts: offcuts,
+      unfittedParts: unfitted,
+    );
+  }
+
+  static String _fmtStatic(double value) =>
+      value.toStringAsFixed(value % 1 == 0 ? 0 : 1);
+
   static _ProjectCutList _buildProjectCutList(
     List<_CarcassEntry> entries,
     double thickness,
@@ -936,6 +1218,7 @@ class _BoardCalculatorScreenState extends State<BoardCalculatorScreen> {
             h,
             backThickness,
             entry.quantity,
+            isBack: true,
           ),
         );
 
@@ -962,7 +1245,7 @@ class _BoardCalculatorScreenState extends State<BoardCalculatorScreen> {
       final key =
           '${part.length.toStringAsFixed(2)}|'
           '${part.width.toStringAsFixed(2)}|'
-          '${part.thickness.toStringAsFixed(2)}';
+          '${part.thickness.toStringAsFixed(2)}|${part.isBack}';
 
       final existing = grouped[key];
 
@@ -1009,14 +1292,16 @@ class _CutPart {
     this.length,
     this.width,
     this.thickness,
-    this.quantity,
-  );
+    this.quantity, {
+    this.isBack = false,
+  });
 
   final String name;
   final double length;
   final double width;
   final double thickness;
   final int quantity;
+  final bool isBack;
 
   _CutPart copyWith({int? quantity}) {
     return _CutPart(
@@ -1025,6 +1310,7 @@ class _CutPart {
       width,
       thickness,
       quantity ?? this.quantity,
+      isBack: isBack,
     );
   }
 }
@@ -1061,3 +1347,81 @@ class _ProjectCutList {
   final int backPanelCount;
   final double totalAreaM2;
 }
+
+class _Panel {
+  const _Panel(this.name, this.length, this.width);
+  final String name;
+  final double length;
+  final double width;
+}
+
+class _StockRect {
+  const _StockRect(this.length, this.width);
+  final double length;
+  final double width;
+}
+
+class _StockSheet {
+  final List<_StockRect> rectangles = [];
+}
+
+class _CutChoice {
+  const _CutChoice(
+    this.sheetIndex,
+    this.rectIndex,
+    this.rotated,
+    this.cutLength,
+    this.cutWidth,
+    this.waste,
+  );
+  final int sheetIndex;
+  final int rectIndex;
+  final bool rotated;
+  final double cutLength;
+  final double cutWidth;
+  final double waste;
+}
+
+class _Offcut {
+  const _Offcut(this.sheetNumber, this.length, this.width);
+  final int sheetNumber;
+  final double length;
+  final double width;
+}
+
+class _SheetPlan {
+  const _SheetPlan({
+    required this.materialName,
+    required this.sheetLength,
+    required this.sheetWidth,
+    required this.sheetCount,
+    required this.sheetCost,
+    required this.cutSteps,
+    required this.offcuts,
+    required this.unfittedParts,
+    this.error,
+  });
+
+  factory _SheetPlan.invalid(String name, String message) => _SheetPlan(
+    materialName: name,
+    sheetLength: 0,
+    sheetWidth: 0,
+    sheetCount: 0,
+    sheetCost: null,
+    cutSteps: const [],
+    offcuts: const [],
+    unfittedParts: const [],
+    error: message,
+  );
+
+  final String materialName;
+  final double sheetLength;
+  final double sheetWidth;
+  final int sheetCount;
+  final double? sheetCost;
+  final List<String> cutSteps;
+  final List<_Offcut> offcuts;
+  final List<_Panel> unfittedParts;
+  final String? error;
+}
+
