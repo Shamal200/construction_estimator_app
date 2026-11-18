@@ -10,6 +10,7 @@ import 'screens/auth/email_verification_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/business/business_onboarding_screen.dart';
 import 'screens/business/business_selection_screen.dart';
+import 'screens/board_calculator_screen.dart';
 import 'screens/customers_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/estimates_screen.dart';
@@ -101,6 +102,7 @@ class AppShell extends StatelessWidget {
       const EstimatesScreen(),
       const MaterialsScreen(),
       const SettingsScreen(),
+      const BoardCalculatorScreen(),
     ];
 
     final destinations = const <NavigationDestination>[
@@ -138,6 +140,11 @@ class AppShell extends StatelessWidget {
         icon: Icon(Icons.settings_outlined),
         selectedIcon: Icon(Icons.settings),
         label: 'Settings',
+      ),
+      NavigationDestination(
+        icon: Icon(Icons.view_quilt_outlined),
+        selectedIcon: Icon(Icons.view_quilt),
+        label: 'Board Calculator',
       ),
     ];
 
